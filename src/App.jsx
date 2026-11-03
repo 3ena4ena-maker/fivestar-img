@@ -27,8 +27,8 @@ export default function App() {
     koreanTitle: '각자의 계절, 하나의 시간',
     subtitle: '흩어진 가족들이 일 년 동안 함께 만든 사계절 포토북 아카이브',
     paperTheme: 'ivory',
-    layoutDensity: 'balanced',
-    includeMonthDividers: true,
+    layoutDensity: 'ten-per-page',
+    includeMonthDividers: false,
   });
   const [cloudStatus, setCloudStatus] = useState({
     connected: false,

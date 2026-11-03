@@ -1,80 +1,62 @@
 {
   "members": [
     {
-      "id": "member-first",
-      "name": "막둥이 세나",
-      "role": "부산",
-      "city": "부산",
-      "color": "#2C3E50",
-      "badgeBg": "#E8EEF5",
-      "avatar": "막둥"
-    },
-    {
-      "id": "member-second",
-      "name": "둘째 지혜",
-      "role": "대전",
-      "city": "대전",
-      "color": "#6C5B7B",
-      "badgeBg": "#EFEBF5",
-      "avatar": "둘째"
-    },
-    {
-      "id": "member-youngest",
-      "name": "첫째 수영",
-      "role": "미국인",
-      "city": "덴버",
-      "color": "#B85D19",
-      "badgeBg": "#F9EFE6",
-      "avatar": "첫째"
-    },
-    {
-      "id": "member-1793696027813",
-      "name": "영선 엄마",
-      "role": "부산 본가",
-      "city": "부산",
-      "color": "#7A4988",
-      "badgeBg": "#F3EAF6",
-      "avatar": "영"
-    },
-    {
-      "id": "member-1793696058907",
-      "name": "종록 아빠",
-      "role": "부산 본가",
-      "city": "부산",
-      "color": "#7A4988",
-      "badgeBg": "#F3EAF6",
-      "avatar": "종"
-    },
-    {
-      "id": "member-1793696760221",
-      "name": "첫째 사우 샘",
-      "role": "미국인",
-      "city": "덴버",
+      "id": "member-mom",
+      "name": "엄마 (정숙)",
+      "role": "강릉 본가",
+      "city": "강릉",
       "color": "#8C5A3C",
       "badgeBg": "#F5EBE6",
+      "avatar": "모"
+    },
+    {
+      "id": "member-dad",
+      "name": "아빠 (철호)",
+      "role": "강릉 본가",
+      "city": "강릉",
+      "color": "#3B5249",
+      "badgeBg": "#E6EFEA",
+      "avatar": "부"
+    },
+    {
+      "id": "member-first",
+      "name": "큰딸 세나",
+      "role": "서울 마포",
+      "city": "서울",
+      "color": "#2C3E50",
+      "badgeBg": "#E8EEF5",
       "avatar": "첫"
     },
     {
-      "id": "member-1793696789538",
-      "name": "둘째 사우 귀열",
-      "role": "대전",
-      "city": "대전",
-      "color": "#8C5A3C",
-      "badgeBg": "#F5EBE6",
+      "id": "member-second",
+      "name": "둘째 준영",
+      "role": "부산 해운대",
+      "city": "부산",
+      "color": "#6C5B7B",
+      "badgeBg": "#EFEBF5",
       "avatar": "둘"
+    },
+    {
+      "id": "member-youngest",
+      "name": "막내 지민",
+      "role": "제주 애월",
+      "city": "제주",
+      "color": "#B85D19",
+      "badgeBg": "#F9EFE6",
+      "avatar": "막"
     }
   ],
   "bookSettings": {
     "year": 2026,
     "title": "OUR YEAR, APART YET TOGETHER",
     "koreanTitle": "각자의 계절, 하나의 시간",
-    "subtitle": "부산 · 대전 · 덴버에서 보낸 2026년 우리 가족의 사계절 기록",
+    "subtitle": "강릉 · 서울 · 부산 · 제주에서 보낸 2026년 우리 가족의 사계절 기록",
     "volumeLabel": "VOL. 01 — 2026 ANNUAL FAMILY EDITION",
     "publisherName": "FIVESTAR FAMILY PRESS",
     "epilogueNote": "비록 사는 도시는 달라도 같은 계절의 빛을 나누며 살아온 우리의 일 년. 각자의 자리에서 찍은 작은 순간들이 모여 한 권의 집이 되었습니다.",
     "familyCode": "2026FAM",
     "paperTheme": "ivory",
-    "layoutDensity": "compact",
+    "layoutDensity": "balanced",
     "includeMonthDividers": true,
     "includeExifDetails": true,
     "includeCommentsInBook": true,
@@ -484,5 +466,5 @@
       "comments": []
     }
   ],
-  "updatedAt": "2026-11-03T09:06:29.551Z"
+  "updatedAt": "2026-11-03T09:18:37.082Z"
 }

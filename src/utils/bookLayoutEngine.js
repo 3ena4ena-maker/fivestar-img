@@ -177,7 +177,7 @@ export async function extractPhotoMetadata(file) {
 }
 
 /**
- * Determines the best magazine template for a group of 1..4 photos
+ * Determines the best magazine template for a group of 1..12 photos
  */
 function selectTemplateForChunk(chunk, variantOffset = 0) {
   const count = chunk.length;
@@ -185,83 +185,90 @@ function selectTemplateForChunk(chunk, variantOffset = 0) {
     const p = chunk[0];
     const styles =
       p.orientation === 'portrait'
-        ? ['solo-portrait-editorial', 'solo-full-caption', 'solo-minimal-frame']
-        : ['solo-landscape-hero', 'solo-editorial-essay', 'solo-minimal-frame'];
+        ? ['solo-portrait-editorial', 'solo-full-caption']
+        : ['solo-landscape-hero', 'solo-portrait-editorial'];
     return styles[variantOffset % styles.length];
   }
   if (count === 2) {
-    const [a, b] = chunk;
-    const bothPortrait = a.orientation === 'portrait' && b.orientation === 'portrait';
-    const styles = bothPortrait
-      ? ['duo-side-by-side', 'duo-asymmetric', 'duo-diagonal']
-      : ['duo-asymmetric', 'duo-stacked-editorial', 'duo-side-by-side'];
+    const styles = ['duo-asymmetric', 'duo-side-by-side', 'duo-stacked-editorial'];
     return styles[variantOffset % styles.length];
   }
   if (count === 3) {
-    const styles = ['trio-feature-left', 'trio-feature-top', 'trio-editorial-strip'];
+    const styles = ['trio-feature-left', 'trio-feature-top', 'trio-columns'];
     return styles[variantOffset % styles.length];
   }
-  const styles = ['quartet-grid', 'quartet-magazine'];
-  return styles[variantOffset % styles.length];
+  if (count === 4) {
+    const styles = ['quartet-grid', 'quartet-hero-top'];
+    return styles[variantOffset % styles.length];
+  }
+  // For 5 to 12 photos: cycle between 'bento-mosaic' (featured hero + grid), 'tiered-rows' (balanced horizontal rows), and 'uniform-contact' (clean architectural contact sheet)
+  const multiStyles = ['bento-mosaic', 'tiered-rows', 'uniform-contact'];
+  return multiStyles[variantOffset % multiStyles.length];
 }
 
 /**
- * Groups chronologically sorted photos into smart chunks per month,
- * respecting layoutDensity ('editorial' | 'balanced' | 'compact')
+ * Groups chronologically sorted photos into smart chunks per month.
+ * Default ('ten-per-page' / 'balanced' / 'compact'): fits up to 10-12 photos on a SINGLE monthly page,
+ * or splits evenly into ~8-10 photo pages if a month has more than 12 photos!
  */
-function chunkMonthPhotos(monthPhotos, density = 'balanced') {
-  const chunks = [];
-  let i = 0;
+function chunkMonthPhotos(monthPhotos, density = 'ten-per-page') {
+  const total = monthPhotos.length;
+  if (total === 0) return [];
 
-  while (i < monthPhotos.length) {
-    const remaining = monthPhotos.length - i;
-    const current = monthPhotos[i];
-
-    if (density === 'editorial') {
-      // 1 or 2 photos per page
-      if (current.isFavorite || remaining === 1) {
-        chunks.push([current]);
-        i += 1;
-      } else {
-        chunks.push(monthPhotos.slice(i, i + 2));
-        i += 2;
-      }
-    } else if (density === 'compact') {
-      // 3 or 4 photos per page when possible
-      if (remaining >= 4) {
-        chunks.push(monthPhotos.slice(i, i + 4));
-        i += 4;
-      } else if (remaining === 3) {
-        chunks.push(monthPhotos.slice(i, i + 3));
-        i += 3;
-      } else if (remaining === 2) {
-        chunks.push(monthPhotos.slice(i, i + 2));
-        i += 2;
-      } else {
-        chunks.push([current]);
-        i += 1;
-      }
-    } else {
-      // 'balanced' — Smart Magazine rhythm (mix of 1, 2, 3, 4 based on same-day proximity & favorites)
-      if (current.isFavorite && (chunks.length % 2 === 0 || remaining === 1)) {
-        chunks.push([current]);
-        i += 1;
-      } else if (remaining >= 4 && chunks.length % 3 === 2) {
-        chunks.push(monthPhotos.slice(i, i + 4));
-        i += 4;
-      } else if (remaining >= 3 && chunks.length % 2 === 1) {
-        chunks.push(monthPhotos.slice(i, i + 3));
-        i += 3;
-      } else if (remaining >= 2) {
-        chunks.push(monthPhotos.slice(i, i + 2));
-        i += 2;
-      } else {
-        chunks.push([current]);
-        i += 1;
-      }
+  if (density === 'editorial') {
+    // 1 to 4 photos per page
+    const maxPerPage = 4;
+    if (total <= maxPerPage) return [monthPhotos];
+    const pageCount = Math.ceil(total / maxPerPage);
+    const baseSize = Math.floor(total / pageCount);
+    const remainder = total % pageCount;
+    const chunks = [];
+    let cursor = 0;
+    for (let p = 0; p < pageCount; p++) {
+      const size = baseSize + (p < remainder ? 1 : 0);
+      chunks.push(monthPhotos.slice(cursor, cursor + size));
+      cursor += size;
     }
+    return chunks;
   }
 
+  if (density === 'six-per-page') {
+    const maxPerPage = 6;
+    if (total <= maxPerPage) return [monthPhotos];
+    const pageCount = Math.ceil(total / maxPerPage);
+    const baseSize = Math.floor(total / pageCount);
+    const remainder = total % pageCount;
+    const chunks = [];
+    let cursor = 0;
+    for (let p = 0; p < pageCount; p++) {
+      const size = baseSize + (p < remainder ? 1 : 0);
+      chunks.push(monthPhotos.slice(cursor, cursor + size));
+      cursor += size;
+    }
+    return chunks;
+  }
+
+  // Default ('ten-per-page' / 'balanced' / 'compact'):
+  // Up to 12 photos fit on a single page (~10 photos standard).
+  // If a month has > 12 photos, split into balanced pages of ~9-10 photos each!
+  const maxPerPage = 11;
+  if (total <= 12) {
+    return [monthPhotos];
+  }
+
+  const pageCount = Math.ceil(total / 10);
+  const baseSize = Math.floor(total / pageCount);
+  const remainder = total % pageCount;
+  const chunks = [];
+  let cursor = 0;
+  for (let p = 0; p < pageCount; p++) {
+    const size = Math.min(maxPerPage, baseSize + (p < remainder ? 1 : 0));
+    chunks.push(monthPhotos.slice(cursor, cursor + size));
+    cursor += size;
+  }
+  if (cursor < total) {
+    chunks.push(monthPhotos.slice(cursor));
+  }
   return chunks;
 }
 
@@ -327,7 +334,7 @@ export function buildPhotobookPages(photos = [], members = [], bookSettings = {}
   // 3. Monthly Chapters & Photo Spreads
   for (const [monthNum, monthPhotos] of byMonth.entries()) {
     const meta = MONTH_META[monthNum] || MONTH_META[1];
-    const chunks = chunkMonthPhotos(monthPhotos, bookSettings.layoutDensity || 'balanced');
+    const chunks = chunkMonthPhotos(monthPhotos, bookSettings.layoutDensity || 'ten-per-page');
     const monthMemberIds = [...new Set(monthPhotos.map((p) => p.memberId))];
     const monthMembers = monthMemberIds
       .map((id) => members.find((m) => m.id === id))
@@ -336,7 +343,7 @@ export function buildPhotobookPages(photos = [], members = [], bookSettings = {}
       ...new Set(monthPhotos.map((p) => p.location).filter(Boolean)),
     ];
 
-    if (bookSettings.includeMonthDividers !== false) {
+    if (bookSettings.includeMonthDividers === true) {
       // Create an editorial Monthly Chapter Opener page
       pages.push({
         id: `page-month-${monthNum}-divider`,
@@ -366,6 +373,10 @@ export function buildPhotobookPages(photos = [], members = [], bookSettings = {}
         layoutTemplate,
         variantOffset,
         isFirstChunkOfMonth: chunkIdx === 0,
+        chunkIndex: chunkIdx + 1,
+        totalChunksInMonth: chunks.length,
+        monthTotalCount: monthPhotos.length,
+        monthMembers,
       });
     });
   }

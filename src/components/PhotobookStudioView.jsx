@@ -188,16 +188,16 @@ export default function PhotobookStudioView({
           {/* Layout Density Selector */}
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-[11px] font-mono-meta text-[#71706B] hidden sm:inline">
-              자동 편집 밀도:
+              페이지당 사진 수:
             </span>
             <select
-              value={bookSettings.layoutDensity || 'balanced'}
+              value={bookSettings.layoutDensity || 'ten-per-page'}
               onChange={(e) => onUpdateBookSettings({ layoutDensity: e.target.value })}
               className="bg-[#FAF9F6] border border-[#141413]/15 px-2.5 py-1.5 text-xs font-medium cursor-pointer"
             >
-              <option value="editorial">여유로운 화보형 (1~2장/p)</option>
-              <option value="balanced">밸런스 매거진형 (자동 1~4장/p)</option>
-              <option value="compact">풍성한 앨범형 (3~4장/p)</option>
+              <option value="ten-per-page">한 페이지 10장 내외 (월별 한눈에 · 기본)</option>
+              <option value="six-per-page">한 페이지 6장 내외 (미디엄 앨범형)</option>
+              <option value="editorial">한 페이지 1~4장 (여유로운 화보형)</option>
             </select>
           </div>
 
@@ -218,13 +218,13 @@ export default function PhotobookStudioView({
           <label className="inline-flex items-center gap-1.5 text-xs text-[#2C2B29] cursor-pointer select-none px-2 py-1 bg-[#F3F1EC] border border-[#141413]/10">
             <input
               type="checkbox"
-              checked={bookSettings.includeMonthDividers !== false}
+              checked={Boolean(bookSettings.includeMonthDividers)}
               onChange={(e) =>
                 onUpdateBookSettings({ includeMonthDividers: e.target.checked })
               }
               className="accent-[#141413]"
             />
-            <span>월별 간지 포함</span>
+            <span>월별 표지 간지 추가</span>
           </label>
         </div>
 
