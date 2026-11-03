@@ -1,14 +1,5 @@
 export const DEFAULT_FAMILY_MEMBERS = [
   {
-    id: 'member-1793696027813',
-    name: '영선 엄마',
-    role: '부산 본가',
-    city: '부산',
-    color: '#7A4988',
-    badgeBg: '#F3EAF6',
-    avatar: '영',
-  },
-  {
     id: 'member-1793696058907',
     name: '종록 아빠',
     role: '부산 본가',
@@ -16,6 +7,15 @@ export const DEFAULT_FAMILY_MEMBERS = [
     color: '#3B5249',
     badgeBg: '#E6EFEA',
     avatar: '종',
+  },
+  {
+    id: 'member-1793696027813',
+    name: '영선 엄마',
+    role: '부산 본가',
+    city: '부산',
+    color: '#7A4988',
+    badgeBg: '#F3EAF6',
+    avatar: '영',
   },
   {
     id: 'member-youngest',
