@@ -13,6 +13,7 @@ import {
   Edit3,
 } from 'lucide-react';
 import { formatKoreanDate, MONTH_META } from '../utils/bookLayoutEngine';
+import FramePhotoItem from './FramePhotoItem';
 
 export default function PhotoDetailModal({
   photo,
@@ -87,13 +88,17 @@ export default function PhotoDetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#141413]/70 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
       <div className="bg-[#FAF9F6] border border-[#141413]/20 w-full max-w-5xl max-h-[92vh] grid grid-cols-1 lg:grid-cols-12 overflow-hidden shadow-2xl">
-        {/* Left: High-Res Image Viewer */}
-        <div className="lg:col-span-7 bg-[#141413] flex flex-col justify-between relative min-h-[300px] lg:min-h-[540px]">
-          <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
-            <img
-              src={photo.url}
-              alt={photo.caption || '가족 사진'}
-              className="max-w-full max-h-[68vh] object-contain shadow-lg"
+        {/* Left: Interactive Frame Position Adjuster & High-Res Viewer */}
+        <div className="lg:col-span-7 bg-[#141413] flex flex-col justify-between relative min-h-[340px] lg:min-h-[540px]">
+          <div className="px-5 py-2.5 bg-white/5 border-b border-white/10 flex items-center justify-between text-[11px] text-amber-300">
+            <span>✋ 아래 사진을 마우스로 드래그하면 포토북 프레임 내 사진 위치가 바로 조절·저장됩니다</span>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+            <FramePhotoItem
+              photo={photo}
+              isRepositionMode={true}
+              onUpdatePhotoPosition={onUpdatePhoto}
+              className="w-full max-w-xl aspect-[4/3] shadow-2xl border border-white/25"
             />
           </div>
 

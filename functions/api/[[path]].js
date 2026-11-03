@@ -211,6 +211,9 @@ export async function onRequest(context) {
       if (typeof updates.location === 'string') target.location = updates.location;
       if (typeof updates.memberId === 'string') target.memberId = updates.memberId;
       if (typeof updates.isFavorite === 'boolean') target.isFavorite = updates.isFavorite;
+      if (typeof updates.cropX === 'number') target.cropX = updates.cropX;
+      if (typeof updates.cropY === 'number') target.cropY = updates.cropY;
+      if (typeof updates.cropZoom === 'number') target.cropZoom = updates.cropZoom;
 
       await saveDb(env, db);
       return new Response(JSON.stringify({ photo: target, allPhotos: db.photos }), {

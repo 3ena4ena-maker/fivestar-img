@@ -14,6 +14,7 @@ import {
   formatKoreanDate,
   formatEditorialDate,
 } from '../utils/bookLayoutEngine';
+import FramePhotoItem from './FramePhotoItem';
 
 export default function TimelineArchiveView({
   photos = [],
@@ -26,6 +27,7 @@ export default function TimelineArchiveView({
   onSelectMemberId,
   onSelectPhoto,
   onToggleFavorite,
+  onUpdatePhotoPosition,
   onOpenUpload,
   onSwitchToBookView,
 }) {
@@ -265,57 +267,32 @@ export default function TimelineArchiveView({
                       key={photo.id}
                       className={`${colSpanClass} bg-white border border-[#141413]/10 hover:border-[#141413]/35 transition-all flex flex-col group shadow-2xs`}
                     >
-                      {/* Photo Frame */}
-                      <div
-                        onClick={() => onSelectPhoto(photo)}
-                        className={`relative overflow-hidden bg-[#E6E4DD] cursor-pointer ${
+                      {/* Photo Frame with Interactive Drag Repositioning */}
+                      <FramePhotoItem
+                        photo={photo}
+                        onSelectPhoto={onSelectPhoto}
+                        onUpdatePhotoPosition={onUpdatePhotoPosition}
+                        className={
                           photo.orientation === 'portrait'
                             ? 'aspect-[4/5]'
                             : photo.orientation === 'square'
                             ? 'aspect-square'
                             : 'aspect-[4/3]'
-                        }`}
+                        }
                       >
-                        <img
-                          src={photo.url}
-                          alt={photo.caption || '가족 사진'}
-                          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-                        />
-
                         {/* Top Left EXIF Date Stamp */}
-                        <div className="absolute top-3 left-3 bg-[#FAF9F6]/92 backdrop-blur-xs px-2.5 py-1 text-[10px] font-mono-meta tracking-wider text-[#141413] shadow-2xs">
+                        <div className="absolute top-3 left-3 bg-[#FAF9F6]/92 backdrop-blur-xs px-2.5 py-1 text-[10px] font-mono-meta tracking-wider text-[#141413] shadow-2xs pointer-events-none">
                           {formatEditorialDate(photo.takenAt)}
                         </div>
 
-                        {/* Top Right Favorite Toggle */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleFavorite(photo);
-                          }}
-                          title="포토북 메인 화보로 지정"
-                          className={`absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full backdrop-blur-xs transition-colors cursor-pointer ${
-                            photo.isFavorite
-                              ? 'bg-[#141413] text-amber-400'
-                              : 'bg-black/30 text-white/80 hover:bg-black/60'
-                          }`}
-                        >
-                          <Star
-                            className={`w-3.5 h-3.5 ${
-                              photo.isFavorite ? 'fill-amber-400' : ''
-                            }`}
-                          />
-                        </button>
-
                         {/* Bottom Uploader Badge */}
                         <div
-                          className="absolute bottom-3 left-3 px-2.5 py-0.5 text-[11px] font-medium rounded-xs shadow-xs"
+                          className="absolute bottom-3 left-3 px-2.5 py-0.5 text-[11px] font-medium rounded-xs shadow-xs pointer-events-none"
                           style={{ backgroundColor: member.badgeBg, color: member.color }}
                         >
                           {member.name} · {member.city}
                         </div>
-                      </div>
+                      </FramePhotoItem>
 
                       {/* Card Body */}
                       <div

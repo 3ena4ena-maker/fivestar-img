@@ -291,6 +291,9 @@ async function startServer() {
     if (typeof updates.memberId === 'string') target.memberId = updates.memberId;
     if (typeof updates.isFavorite === 'boolean') target.isFavorite = updates.isFavorite;
     if (typeof updates.layoutHint === 'string') target.layoutHint = updates.layoutHint;
+    if (typeof updates.cropX === 'number') target.cropX = updates.cropX;
+    if (typeof updates.cropY === 'number') target.cropY = updates.cropY;
+    if (typeof updates.cropZoom === 'number') target.cropZoom = updates.cropZoom;
 
     await persistState(db);
     res.json({ photo: target, allPhotos: db.photos });

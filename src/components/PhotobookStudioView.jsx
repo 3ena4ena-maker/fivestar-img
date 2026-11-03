@@ -8,9 +8,9 @@ import {
   SlidersHorizontal,
   Download,
   Printer,
-  Sparkles,
   Loader2,
   Check,
+  Move,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -23,10 +23,12 @@ export default function PhotobookStudioView({
   onUpdateBookSettings,
   onSelectPhoto,
   onCycleVariant,
+  onUpdatePhotoPosition,
 }) {
   // 'spread' (2-page) | 'single' (1-page) | 'grid' (all pages overview)
   const [viewType, setViewType] = useState('spread');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isRepositionMode, setIsRepositionMode] = useState(false);
   const [showCoverEditor, setShowCoverEditor] = useState(false);
   const [titleInput, setTitleInput] = useState(bookSettings.title || '');
   const [koreanTitleInput, setKoreanTitleInput] = useState(bookSettings.koreanTitle || '');
@@ -228,8 +230,21 @@ export default function PhotobookStudioView({
           </label>
         </div>
 
-        {/* Right: Cover Editor & PDF / Print Buttons */}
-        <div className="flex items-center gap-2">
+        {/* Right: Reposition Mode, Cover Editor & PDF / Print Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsRepositionMode((prev) => !prev)}
+            className={`px-3 py-1.5 border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              isRepositionMode
+                ? 'bg-amber-400 text-[#141413] border-amber-500 shadow-xs'
+                : 'bg-[#FAF9F6] text-[#141413] border-[#141413]/25 hover:border-[#141413]'
+            }`}
+          >
+            <Move className="w-3.5 h-3.5" />
+            <span>{isRepositionMode ? '사진 위치 조절 완료' : '사진 위치·크기 조절'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowCoverEditor(!showCoverEditor)}
@@ -271,6 +286,24 @@ export default function PhotobookStudioView({
           </button>
         </div>
       </div>
+
+      {isRepositionMode && (
+        <div className="bg-[#141413] text-[#FAF9F6] px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2 border border-amber-400/50">
+          <div className="flex items-center gap-2">
+            <Move className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>사진 위치 조절 모드 활성화됨:</strong> 포토북 페이지의 어떤 사진이든 마우스나 손가락으로 <strong>드래그하여 프레임 내 위치를 이동</strong>하고, 사진 하단의 <strong>+ / - 버튼으로 확대·축소</strong>하세요. (놓는 즉시 자동 저장됩니다)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsRepositionMode(false)}
+            className="px-3 py-1 bg-amber-400 text-[#141413] font-bold text-xs rounded-xs cursor-pointer"
+          >
+            위치 조절 마치기
+          </button>
+        </div>
+      )}
 
       {/* Collapsible Book Cover & Epilogue Editor */}
       {showCoverEditor && (
@@ -378,6 +411,9 @@ export default function PhotobookStudioView({
                   side="left"
                   onSelectPhoto={onSelectPhoto}
                   onCycleVariant={onCycleVariant}
+                  onUpdatePhotoPosition={onUpdatePhotoPosition}
+                  isRepositionMode={isRepositionMode}
+                  onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
                 />
               </div>
 
@@ -391,6 +427,9 @@ export default function PhotobookStudioView({
                     side="right"
                     onSelectPhoto={onSelectPhoto}
                     onCycleVariant={onCycleVariant}
+                    onUpdatePhotoPosition={onUpdatePhotoPosition}
+                    isRepositionMode={isRepositionMode}
+                    onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
                   />
                 ) : (
                   <div className="w-full h-full paper-ivory book-spine-right flex flex-col items-center justify-center p-10 text-center">
@@ -488,6 +527,9 @@ export default function PhotobookStudioView({
               side="single"
               onSelectPhoto={onSelectPhoto}
               onCycleVariant={onCycleVariant}
+              onUpdatePhotoPosition={onUpdatePhotoPosition}
+              isRepositionMode={isRepositionMode}
+              onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
             />
           </div>
 
@@ -552,6 +594,9 @@ export default function PhotobookStudioView({
                   side="single"
                   onSelectPhoto={onSelectPhoto}
                   onCycleVariant={onCycleVariant}
+                  onUpdatePhotoPosition={onUpdatePhotoPosition}
+                  isRepositionMode={isRepositionMode}
+                  onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
                 />
               </div>
             </div>

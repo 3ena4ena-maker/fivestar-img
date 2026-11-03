@@ -1,6 +1,7 @@
 import React from 'react';
-import { MapPin, Shuffle } from 'lucide-react';
+import { MapPin, Shuffle, Move } from 'lucide-react';
 import { formatEditorialDate, formatKoreanDate } from '../utils/bookLayoutEngine';
+import FramePhotoItem from './FramePhotoItem';
 
 /**
  * Splits an array of photos (length 5..12) into rows of photos according to the chosen template
@@ -71,6 +72,9 @@ export default function BookPageRenderer({
   side = 'single', // 'left' | 'right' | 'single'
   onSelectPhoto,
   onCycleVariant,
+  onUpdatePhotoPosition,
+  isRepositionMode = false,
+  onToggleRepositionMode,
   isPrint = false,
 }) {
   if (!page) return null;
@@ -396,28 +400,28 @@ export default function BookPageRenderer({
 
     return (
       <div key={photo.id} className={`flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
-        <div
-          onClick={() => onSelectPhoto && onSelectPhoto(photo)}
-          className={`relative overflow-hidden bg-[#E6E4DD] border border-[#141413]/8 cursor-pointer group ${
+        <FramePhotoItem
+          photo={photo}
+          isRepositionMode={isRepositionMode}
+          isPrint={isPrint}
+          onSelectPhoto={onSelectPhoto}
+          onUpdatePhotoPosition={onUpdatePhotoPosition}
+          className={`border border-[#141413]/8 ${
             fillHeight ? 'flex-1 min-h-[110px]' : aspectClass
           }`}
         >
-          <img
-            src={photo.url}
-            alt={photo.caption || '가족 사진'}
-            crossOrigin="anonymous"
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-          />
-          <div className="absolute top-1.5 left-1.5 bg-[#FAF9F6]/92 backdrop-blur-xs px-1.5 py-0.5 text-[9px] font-mono-meta tracking-wider text-[#141413]">
+          <div className="absolute top-1.5 left-1.5 bg-[#FAF9F6]/92 backdrop-blur-xs px-1.5 py-0.5 text-[9px] font-mono-meta tracking-wider text-[#141413] pointer-events-none">
             {String(figIndex + 1).padStart(2, '0')} · {formatEditorialDate(photo.takenAt).slice(5)}
           </div>
-          <div
-            className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-medium rounded-xs shadow-xs"
-            style={{ backgroundColor: member.badgeBg, color: member.color }}
-          >
-            {member.name} · {member.city}
-          </div>
-        </div>
+          {!isRepositionMode && (
+            <div
+              className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-medium rounded-xs shadow-xs pointer-events-none"
+              style={{ backgroundColor: member.badgeBg, color: member.color }}
+            >
+              {member.name} · {member.city}
+            </div>
+          )}
+        </FramePhotoItem>
 
         <div className={compactCaption ? 'mt-1' : 'mt-2'}>
           <div className="flex items-center justify-between gap-2 text-[10px] text-[#71706B]">
@@ -455,8 +459,23 @@ export default function BookPageRenderer({
             CHAPTER {String(month).padStart(2, '0')} · {monthMeta?.seasonKo || 'ARCHIVE'}
             {totalChunksInMonth > 1 ? ` (${chunkIndex}/${totalChunksInMonth})` : ''}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-[#8C5A3C] font-semibold">{photos.length} PHOTOS</span>
+            {!isPrint && onToggleRepositionMode && (
+              <button
+                type="button"
+                onClick={onToggleRepositionMode}
+                title="프레임 안에서 사진을 드래그해 위치를 맞추는 모드를 켜거나 끕니다"
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-xs text-[9px] tracking-wider transition-colors cursor-pointer ${
+                  isRepositionMode
+                    ? 'bg-amber-400 text-[#141413] font-bold'
+                    : 'bg-[#141413]/8 hover:bg-[#141413] hover:text-[#FAF9F6] text-[#141413]'
+                }`}
+              >
+                <Move className="w-2.5 h-2.5" />
+                <span>{isRepositionMode ? '위치조절 완료' : '사진 위치 이동'}</span>
+              </button>
+            )}
             {!isPrint && onCycleVariant && (
               <button
                 type="button"
@@ -504,7 +523,6 @@ export default function BookPageRenderer({
                   >
                     {row.map(({ photo, globalIndex }, cellIdx) => {
                       const member = getMember(photo.memberId);
-                      // In bento-mosaic mode, give the first photo in the first row wider flex weight
                       const isFeaturedCell =
                         layoutTemplate === 'bento-mosaic' &&
                         rowIdx === 0 &&
@@ -512,32 +530,32 @@ export default function BookPageRenderer({
                         row.length <= 3;
 
                       return (
-                        <div
+                        <FramePhotoItem
                           key={photo.id}
-                          onClick={() => onSelectPhoto && onSelectPhoto(photo)}
-                          className={`relative overflow-hidden bg-[#E6E4DD] border border-[#141413]/10 cursor-pointer group ${
+                          photo={photo}
+                          isRepositionMode={isRepositionMode}
+                          isPrint={isPrint}
+                          onSelectPhoto={onSelectPhoto}
+                          onUpdatePhotoPosition={onUpdatePhotoPosition}
+                          className={`border border-[#141413]/10 ${
                             isFeaturedCell ? 'flex-[1.45]' : 'flex-1'
                           }`}
                         >
-                          <img
-                            src={photo.url}
-                            alt={photo.caption || '가족 사진'}
-                            crossOrigin="anonymous"
-                            className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
-                          />
                           {/* Compact Number + Date Stamp */}
-                          <div className="absolute top-1 left-1 bg-[#141413]/75 text-[#FAF9F6] px-1.5 py-0.2 text-[8px] font-mono-meta tracking-tight">
+                          <div className="absolute top-1 left-1 bg-[#141413]/75 text-[#FAF9F6] px-1.5 py-0.2 text-[8px] font-mono-meta tracking-tight pointer-events-none">
                             {String(globalIndex + 1).padStart(2, '0')} ·{' '}
                             {formatEditorialDate(photo.takenAt).slice(5)}
                           </div>
                           {/* Compact Family Member + City Pill */}
-                          <div
-                            className="absolute bottom-1 right-1 px-1.5 py-0.2 text-[8px] font-semibold rounded-xs shadow-2xs"
-                            style={{ backgroundColor: member.badgeBg, color: member.color }}
-                          >
-                            {member.name.split(' ')[0]}·{member.city}
-                          </div>
-                        </div>
+                          {!isRepositionMode && (
+                            <div
+                              className="absolute bottom-1 right-1 px-1.5 py-0.2 text-[8px] font-semibold rounded-xs shadow-2xs pointer-events-none"
+                              style={{ backgroundColor: member.badgeBg, color: member.color }}
+                            >
+                              {member.name.split(' ')[0]}·{member.city}
+                            </div>
+                          )}
+                        </FramePhotoItem>
                       );
                     })}
                   </div>

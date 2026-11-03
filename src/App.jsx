@@ -125,6 +125,10 @@ export default function App() {
   };
 
   const handleUpdatePhoto = async (photoId, patch) => {
+    // Instant optimistic update for smooth frame dragging / positioning
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, ...patch } : p))
+    );
     const res = await fetch(`/api/photos/${photoId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -133,7 +137,11 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setPhotos(data.allPhotos);
-      showToast('사진 기록이 업데이트되어 포토북 레이아웃에 반영되었습니다.');
+      if (typeof patch.cropX === 'number') {
+        showToast('프레임 내 사진 위치·확대 설정이 저장되었습니다.');
+      } else {
+        showToast('사진 기록이 업데이트되어 포토북 레이아웃에 반영되었습니다.');
+      }
     }
   };
 
@@ -544,6 +552,7 @@ export default function App() {
               onUpdateBookSettings={handleUpdateBookSettings}
               onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
               onCycleVariant={handleCyclePageVariant}
+              onUpdatePhotoPosition={handleUpdatePhoto}
             />
           ) : activeTab === 'timeline' ? (
             <TimelineArchiveView
@@ -559,6 +568,7 @@ export default function App() {
               onToggleFavorite={(photo) =>
                 handleUpdatePhoto(photo.id, { isFavorite: !photo.isFavorite })
               }
+              onUpdatePhotoPosition={handleUpdatePhoto}
               onOpenUpload={() => setIsUploadOpen(true)}
               onSwitchToBookView={() => setActiveTab('book')}
             />
