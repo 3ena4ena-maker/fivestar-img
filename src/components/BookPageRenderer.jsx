@@ -25,6 +25,10 @@ function buildAdaptiveRows(photos, layoutTemplate) {
 
   if (layoutTemplate === 'tiered-rows') {
     const map = {
+      1: [1],
+      2: [1, 1],
+      3: [2, 1],
+      4: [1, 3],
       5: [3, 2],
       6: [3, 1, 2],
       7: [3, 2, 2],
@@ -39,6 +43,10 @@ function buildAdaptiveRows(photos, layoutTemplate) {
 
   if (layoutTemplate === 'uniform-contact') {
     const map = {
+      1: [1],
+      2: [2],
+      3: [3],
+      4: [2, 2],
       5: [3, 2],
       6: [3, 3],
       7: [4, 3],
@@ -53,6 +61,10 @@ function buildAdaptiveRows(photos, layoutTemplate) {
 
   // Default: 'bento-mosaic' (Featured lead row + balanced mosaic rows)
   const map = {
+    1: [1],
+    2: [2],
+    3: [1, 2],
+    4: [2, 2],
     5: [2, 3],
     6: [2, 4],
     7: [3, 4],
@@ -391,7 +403,8 @@ export default function BookPageRenderer({
     totalChunksInMonth = 1,
   } = page;
 
-  const isMultiMosaic = photos.length >= 5;
+  const isMultiMosaic =
+    bookSettings.layoutDensity !== 'editorial' || photos.length >= 5;
 
   // Sub-component for 1~4 Photo Pages (Large Editorial Frames + Direct Caption)
   const renderPhotoUnit = (photo, figIndex, options = {}) => {
