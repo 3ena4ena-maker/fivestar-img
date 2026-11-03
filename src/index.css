@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif-en: 'Cormorant Garamond', 'Noto Serif KR', Georgia, serif;
+    --font-serif-ko: 'Noto Serif KR', 'Cormorant Garamond', serif;
+    --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #FAF9F6;
+    color: #141413;
+  }
+}
+
+.font-editorial-en {
+  font-family: var(--font-serif-en);
+}
+
+.font-editorial-ko {
+  font-family: var(--font-serif-ko);
+}
+
+.font-mono-meta {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Magazine Paper Tones */
+.paper-ivory {
+  background-color: #FBF9F4;
+  color: #161614;
+}
+
+.paper-white {
+  background-color: #FFFFFF;
+  color: #121212;
+}
+
+.paper-stone {
+  background-color: #F3F1EC;
+  color: #181715;
+}
+
+/* Realistic Book Spine Shadow for 2-Page Spread View */
+.book-spine-left {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 88%,
+    rgba(20, 20, 19, 0.04) 96%,
+    rgba(20, 20, 19, 0.12) 100%
+  );
+}
+
+.book-spine-right {
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0) 88%,
+    rgba(20, 20, 19, 0.04) 96%,
+    rgba(20, 20, 19, 0.12) 100%
+  );
+}
+
+.book-spread-shadow {
+  box-shadow:
+    0 24px 60px -15px rgba(20, 20, 19, 0.14),
+    0 4px 16px -4px rgba(20, 20, 19, 0.06),
+    0 0 0 1px rgba(20, 20, 19, 0.08);
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F3F1EC;
+}
+::-webkit-scrollbar-thumb {
+  background: #C9C5BA;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8E8A80;
+}
+
+/* Print / High-Res PDF Book Export Mode */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body {
+    background: #FFFFFF !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-book {
+    display: block !important;
+  }
+
+  .print-page-sheet {
+    width: 210mm !important;
+    height: 297mm !important;
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden;
+    position: relative;
+    box-sizing: border-box;
+  }
+}

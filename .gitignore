@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wrangler/
+.env
+.env.*
+server/storage/uploads/*
+!server/storage/uploads/.gitkeep
+server/storage/cloud.config.json
