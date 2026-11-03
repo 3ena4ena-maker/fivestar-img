@@ -18,6 +18,7 @@ export default function UploadModal({
   onClose,
   members = [],
   activeMemberId,
+  onUpdateMember,
   onUploadSuccess,
 }) {
   const [selectedMemberId, setSelectedMemberId] = useState(
@@ -25,12 +26,29 @@ export default function UploadModal({
   );
   const [items, setItems] = useState([]);
   const [batchLocation, setBatchLocation] = useState('');
+  const [editingCity, setEditingCity] = useState(false);
+  const [cityInput, setCityInput] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId) || members[0];
+
+  const handleSaveMemberCity = async () => {
+    if (!selectedMember || !cityInput.trim() || !onUpdateMember) {
+      setEditingCity(false);
+      return;
+    }
+    await onUpdateMember(selectedMember.id, {
+      name: selectedMember.name,
+      city: cityInput.trim(),
+      role: cityInput.trim(),
+    });
+    setEditingCity(false);
+  };
 
   const handleFilesSelected = async (fileList) => {
     const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
@@ -172,7 +190,10 @@ export default function UploadModal({
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => setSelectedMemberId(m.id)}
+                      onClick={() => {
+                        setSelectedMemberId(m.id);
+                        setEditingCity(false);
+                      }}
                       className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
                         active
                           ? 'bg-[#141413] text-[#FAF9F6] border-[#141413] shadow-xs'
@@ -189,6 +210,57 @@ export default function UploadModal({
                   );
                 })}
               </div>
+
+              {selectedMember && (
+                <div className="mt-2.5 pt-2.5 border-t border-[#141413]/10 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-[11px] text-[#5A5852] flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-[#8C5A3C]" />
+                    <strong>{selectedMember.name}</strong>님의 현재 설정 도시:
+                  </span>
+                  {editingCity ? (
+                    <div className="inline-flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={cityInput}
+                        onChange={(e) => setCityInput(e.target.value)}
+                        placeholder="도시 입력 (예: 서울, 대전, 런던)"
+                        className="bg-white border border-[#141413]/25 px-2 py-0.5 text-xs w-36 focus:outline-none focus:border-[#141413]"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveMemberCity}
+                        className="px-2.5 py-0.5 bg-[#141413] text-[#FAF9F6] text-[11px] cursor-pointer"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingCity(false)}
+                        className="px-2 py-0.5 text-[11px] text-[#71706B] cursor-pointer"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-2">
+                      <span className="font-semibold text-[#141413] bg-white px-2 py-0.5 border border-[#141413]/15">
+                        {selectedMember.city || '미설정'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCityInput(selectedMember.city || '');
+                          setEditingCity(true);
+                        }}
+                        className="text-[11px] text-[#8C5A3C] hover:underline cursor-pointer"
+                      >
+                        내 도시 변경하기 ✎
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-5">

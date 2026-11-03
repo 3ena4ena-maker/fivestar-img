@@ -289,7 +289,30 @@ export async function onRequest(context) {
 
     // POST /api/members
     if (method === 'POST' && route === 'members') {
-      const { name, role, city } = await request.json();
+      const { id, name, role, city, color, badgeBg, avatar } = await request.json();
+      if (id) {
+        const existing = db.members.find((m) => m.id === id);
+        if (existing) {
+          if (typeof name === 'string' && name.trim()) {
+            existing.name = name.trim();
+            existing.avatar = avatar || name.trim().slice(0, 1);
+          }
+          if (typeof city === 'string') existing.city = city.trim();
+          if (typeof role === 'string') {
+            existing.role = role.trim();
+          } else if (typeof city === 'string') {
+            existing.role = city.trim();
+          }
+          if (color) existing.color = color;
+          if (badgeBg) existing.badgeBg = badgeBg;
+          await saveDb(env, db);
+          return new Response(
+            JSON.stringify({ member: existing, members: db.members }),
+            { status: 200, headers: jsonHeaders }
+          );
+        }
+      }
+
       const palette = [
         { color: '#8C5A3C', badgeBg: '#F5EBE6' },
         { color: '#3B5249', badgeBg: '#E6EFEA' },
@@ -311,6 +334,33 @@ export async function onRequest(context) {
       await saveDb(env, db);
       return new Response(JSON.stringify({ member: newMember, members: db.members }), {
         status: 201,
+        headers: jsonHeaders,
+      });
+    }
+
+    // PATCH /api/members/:id
+    if (method === 'PATCH' && pathParts[0] === 'members' && pathParts.length === 2) {
+      const existing = db.members.find((m) => m.id === pathParts[1]);
+      if (!existing) {
+        return new Response(JSON.stringify({ error: 'Member not found' }), {
+          status: 404,
+          headers: jsonHeaders,
+        });
+      }
+      const { name, city, role } = await request.json();
+      if (typeof name === 'string' && name.trim()) {
+        existing.name = name.trim();
+        existing.avatar = name.trim().slice(0, 1);
+      }
+      if (typeof city === 'string') existing.city = city.trim();
+      if (typeof role === 'string') {
+        existing.role = role.trim();
+      } else if (typeof city === 'string' && city.trim()) {
+        existing.role = city.trim();
+      }
+      await saveDb(env, db);
+      return new Response(JSON.stringify({ member: existing, members: db.members }), {
+        status: 200,
         headers: jsonHeaders,
       });
     }

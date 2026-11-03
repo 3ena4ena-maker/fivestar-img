@@ -365,13 +365,17 @@ async function startServer() {
       const existing = db.members.find((m) => m.id === id);
       if (existing) {
         existing.name = name.trim();
-        existing.role = role || existing.role;
-        existing.city = city || existing.city;
+        if (typeof city === 'string') existing.city = city.trim();
+        if (typeof role === 'string') {
+          existing.role = role.trim();
+        } else if (typeof city === 'string') {
+          existing.role = city.trim();
+        }
         existing.color = color || existing.color;
         existing.badgeBg = badgeBg || existing.badgeBg;
         existing.avatar = avatar || name.trim().slice(0, 1);
         await persistState(db);
-        return res.json({ members: db.members });
+        return res.json({ member: existing, members: db.members });
       }
     }
 
@@ -398,6 +402,30 @@ async function startServer() {
     db.members.push(newMember);
     await persistState(db);
     res.status(201).json({ member: newMember, members: db.members });
+  });
+
+  // PATCH /api/members/:id — Update a specific member's city, role, or name
+  app.patch('/api/members/:id', async (req, res) => {
+    const db = loadLocalDb();
+    const existing = db.members.find((m) => m.id === req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: '가족 구성원을 찾을 수 없습니다.' });
+    }
+    const { name, city, role } = req.body;
+    if (typeof name === 'string' && name.trim()) {
+      existing.name = name.trim();
+      existing.avatar = name.trim().slice(0, 1);
+    }
+    if (typeof city === 'string') {
+      existing.city = city.trim();
+    }
+    if (typeof role === 'string') {
+      existing.role = role.trim();
+    } else if (typeof city === 'string' && city.trim()) {
+      existing.role = city.trim();
+    }
+    await persistState(db);
+    res.json({ member: existing, members: db.members });
   });
 
   // DELETE /api/members/:id

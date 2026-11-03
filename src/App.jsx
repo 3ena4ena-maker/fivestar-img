@@ -60,6 +60,8 @@ export default function App() {
     open: false,
     tab: 'members',
   });
+  const [isQuickCityEdit, setIsQuickCityEdit] = useState(false);
+  const [quickCityValue, setQuickCityValue] = useState('');
   const [toastMsg, setToastMsg] = useState('');
 
   const showToast = (msg) => {
@@ -192,7 +194,44 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setMembers(data.members);
+      const updatedCities = [...new Set(data.members.map((m) => m.city).filter(Boolean))];
+      if (
+        bookSettings.subtitle &&
+        bookSettings.subtitle.includes('에서 보낸') &&
+        updatedCities.length > 0
+      ) {
+        const newSub = `${updatedCities.join(' · ')}에서 보낸 ${
+          bookSettings.year || 2026
+        }년 우리 가족의 사계절 기록`;
+        handleUpdateBookSettings({ subtitle: newSub });
+      }
       showToast(`새 가족 구성원 '${memberPayload.name}'님이 추가되었습니다.`);
+    }
+  };
+
+  const handleUpdateMember = async (memberId, patch) => {
+    const res = await fetch(`/api/members/${memberId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setMembers(data.members);
+      const updatedCities = [...new Set(data.members.map((m) => m.city).filter(Boolean))];
+      if (
+        bookSettings.subtitle &&
+        bookSettings.subtitle.includes('에서 보낸') &&
+        updatedCities.length > 0
+      ) {
+        const newSub = `${updatedCities.join(' · ')}에서 보낸 ${
+          bookSettings.year || 2026
+        }년 우리 가족의 사계절 기록`;
+        handleUpdateBookSettings({ subtitle: newSub });
+      }
+      showToast(
+        `'${patch.name || '가족'}'님의 거주 도시가 '${patch.city}'(으)로 업데이트되었습니다.`
+      );
     }
   };
 
@@ -262,10 +301,18 @@ export default function App() {
                 {bookSettings.volumeLabel || 'VOL. 01 — 2026 ANNUAL FAMILY ARCHIVE'}
               </span>
               <span className="hidden md:inline text-white/25">|</span>
-              <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-[#E6E4DD]">
+              <button
+                type="button"
+                onClick={() => setFamilyModalState({ open: true, tab: 'members' })}
+                title="클릭하여 각 가족 구성원의 거주 도시를 설정하거나 변경합니다"
+                className="inline-flex items-center gap-1.5 text-[11px] text-[#E6E4DD] hover:text-amber-300 transition-colors cursor-pointer"
+              >
                 <MapPin className="w-3 h-3 text-amber-400" />
-                <span>연결된 가족 도시: {uniqueCities.join(' · ')}</span>
-              </span>
+                <span>연결된 가족 도시: {uniqueCities.join(' · ') || '도시 설정하기'}</span>
+                <span className="px-1.5 py-0.2 bg-white/10 rounded-xs text-[10px] text-amber-300">
+                  각자 도시 설정 ✎
+                </span>
+              </button>
             </div>
 
             <div className="flex items-center gap-3">
@@ -315,24 +362,86 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Right Controls: Active Member Switcher & Upload CTA */}
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Who am I switcher */}
-                <div className="flex items-center bg-[#F3F1EC] border border-[#141413]/15 px-3 py-1.5">
-                  <span className="text-[10px] font-mono-meta uppercase tracking-wider text-[#71706B] mr-2">
-                    내 프로필:
-                  </span>
-                  <select
-                    value={activeMember.id}
-                    onChange={(e) => handleSelectActiveMember(e.target.value)}
-                    className="bg-transparent text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
-                  >
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.city})
-                      </option>
-                    ))}
-                  </select>
+              {/* Right Controls: Active Member Switcher + Quick City Setting & Upload CTA */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Who am I switcher + Quick Inline City Editor */}
+                <div className="flex flex-wrap items-center bg-[#F3F1EC] border border-[#141413]/15 px-3 py-1.5 gap-2">
+                  <div className="flex items-center">
+                    <span className="text-[10px] font-mono-meta uppercase tracking-wider text-[#71706B] mr-1.5">
+                      내 프로필:
+                    </span>
+                    <select
+                      value={activeMember.id}
+                      onChange={(e) => {
+                        handleSelectActiveMember(e.target.value);
+                        setIsQuickCityEdit(false);
+                      }}
+                      className="bg-transparent text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.city})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <span className="text-[#141413]/20">|</span>
+
+                  {isQuickCityEdit ? (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (quickCityValue.trim() && activeMember.id) {
+                          await handleUpdateMember(activeMember.id, {
+                            name: activeMember.name,
+                            city: quickCityValue.trim(),
+                            role: quickCityValue.trim(),
+                          });
+                        }
+                        setIsQuickCityEdit(false);
+                      }}
+                      className="inline-flex items-center gap-1"
+                    >
+                      <input
+                        type="text"
+                        value={quickCityValue}
+                        onChange={(e) => setQuickCityValue(e.target.value)}
+                        placeholder="내 도시 (예: 서울, 대전)"
+                        className="bg-white border border-[#141413]/25 px-2 py-0.5 text-xs w-28 focus:outline-none focus:border-[#141413]"
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        className="px-2 py-0.5 bg-[#141413] text-[#FAF9F6] text-[11px] font-medium cursor-pointer"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickCityEdit(false)}
+                        className="px-1.5 py-0.5 text-[11px] text-[#71706B] cursor-pointer"
+                      >
+                        취소
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickCityValue(activeMember.city || '');
+                        setIsQuickCityEdit(true);
+                      }}
+                      title="내 거주 도시를 직접 설정하거나 변경합니다"
+                      className="inline-flex items-center gap-1 text-xs text-[#8C5A3C] hover:text-[#141413] font-medium cursor-pointer"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      <span>내 도시: {activeMember.city || '설정'}</span>
+                      <span className="text-[10px] underline underline-offset-2 ml-0.5">
+                        변경
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Family Member & Invite Settings */}
@@ -342,7 +451,7 @@ export default function App() {
                   className="px-3.5 py-2.5 bg-white border border-[#141413]/20 hover:border-[#141413] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>가족 구성원 ({members.length})</span>
+                  <span>가족·도시 설정 ({members.length})</span>
                 </button>
 
                 {/* Primary Upload Photo CTA */}
@@ -504,6 +613,7 @@ export default function App() {
         onClose={() => setIsUploadOpen(false)}
         members={members}
         activeMemberId={activeMember.id}
+        onUpdateMember={handleUpdateMember}
         onUploadSuccess={handleUploadSuccess}
       />
 
@@ -527,9 +637,11 @@ export default function App() {
         onClose={() => setFamilyModalState({ ...familyModalState, open: false })}
         initialTab={familyModalState.tab}
         members={members}
+        activeMemberId={activeMember.id}
         bookSettings={bookSettings}
         cloudStatus={cloudStatus}
         onAddMember={handleAddMember}
+        onUpdateMember={handleUpdateMember}
         onDeleteMember={handleDeleteMember}
         onUpdateBookSettings={handleUpdateBookSettings}
         onSaveCloudConfig={handleSaveCloudConfig}
