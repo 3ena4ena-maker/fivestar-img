@@ -326,6 +326,8 @@ export default function App() {
                 <span>
                   {cloudStatus.mode === 'supabase'
                     ? 'CLOUD SYNC: SUPABASE LIVE'
+                    : cloudStatus.mode === 'cloudflare-kv'
+                    ? 'CLOUD DB: CLOUDFLARE KV 영구 공유 활성'
                     : 'SERVER DB: 동기화 활성'}
                 </span>
               </button>

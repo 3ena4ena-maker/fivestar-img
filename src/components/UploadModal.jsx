@@ -63,7 +63,7 @@ export default function UploadModal({
           const meta = await extractPhotoMetadata(file);
           return {
             tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            file,
+            file: meta.optimizedFile || file,
             previewUrl: meta.previewUrl,
             dateStr: meta.dateStr,
             takenAt: meta.takenAt,

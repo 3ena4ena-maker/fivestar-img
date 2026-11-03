@@ -433,13 +433,15 @@ export default function FamilyCloudModal({
                     현재 저장소 상태:{' '}
                     {cloudStatus?.mode === 'supabase'
                       ? 'Supabase 클라우드 실시간 연동 중'
+                      : cloudStatus?.mode === 'cloudflare-kv'
+                      ? 'Cloudflare KV 글로벌 공유 DB 영구 연동 중 (별도 설정 불필요)'
                       : cloudStatus?.mode === 'cloudflare-edge'
                       ? 'Cloudflare Edge 서버 저장소 활성'
                       : '풀스택 서버 영구 저장소 (Local Server DB + Uploads) 활성'}
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-[#3B5249]/85 leading-relaxed">
-                  현재 업로드된 사진과 각 가족이 설정한 거주 도시·코멘트가 서버에 보관되며, 아래 Supabase 클라우드를 연결하면 더욱 영구적인 대용량 스토리지로 동기화됩니다.
+                  별도의 Supabase 가입이나 외부 프로그램 생성 없이도, 이미 연결된 <strong>Cloudflare KV 공유 데이터베이스</strong>를 통해 모든 가족이 어느 기기에서 접속하든 동일한 사진·도시·코멘트 데이터를 영구적으로 함께 보고 사용할 수 있습니다.
                 </p>
               </div>
             </div>

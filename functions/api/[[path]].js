@@ -11,7 +11,7 @@ function getSeasonFromMonth(month) {
   return 'winter';
 }
 
-// Edge memory state + optional Cloudflare KV binding (ARCHIVE_KV)
+// Fallback edge memory only if KV is not bound
 let edgeDb = null;
 
 function createInitialDb() {
@@ -27,9 +27,15 @@ async function getDb(env) {
   if (env?.ARCHIVE_KV) {
     try {
       const saved = await env.ARCHIVE_KV.get('main_archive', 'json');
-      if (saved && Array.isArray(saved.photos)) return saved;
-    } catch {
-      // fallback to edgeDb
+      if (saved && Array.isArray(saved.photos)) {
+        return saved;
+      }
+      // First-time initialization in KV
+      const initial = createInitialDb();
+      await env.ARCHIVE_KV.put('main_archive', JSON.stringify(initial));
+      return initial;
+    } catch (err) {
+      console.error('KV read error:', err);
     }
   }
   if (!edgeDb) {
@@ -43,18 +49,13 @@ async function saveDb(env, db) {
   db.updatedAt = new Date().toISOString();
   edgeDb = db;
   if (env?.ARCHIVE_KV) {
-    try {
-      await env.ARCHIVE_KV.put('main_archive', JSON.stringify(db));
-    } catch {
-      // ignore KV write error
-    }
+    await env.ARCHIVE_KV.put('main_archive', JSON.stringify(db));
   }
   return db;
 }
 
 export async function onRequest(context) {
   const { request, env, params } = context;
-  const url = new URL(request.url);
   const pathParts = (params.path || []).map(String);
   const route = pathParts.join('/');
   const method = request.method.toUpperCase();
@@ -71,6 +72,28 @@ export async function onRequest(context) {
   }
 
   try {
+    // GET /api/photo-image/:photoId — Serve uploaded photo binary from Cloudflare KV
+    if (method === 'GET' && pathParts[0] === 'photo-image' && pathParts[1]) {
+      const photoId = pathParts[1];
+      if (env?.ARCHIVE_KV) {
+        const { value, metadata } = await env.ARCHIVE_KV.getWithMetadata(
+          `photo_blob:${photoId}`,
+          { type: 'arrayBuffer' }
+        );
+        if (value) {
+          return new Response(value, {
+            status: 200,
+            headers: {
+              'Content-Type': metadata?.contentType || 'image/jpeg',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+      return new Response('Image not found', { status: 404 });
+    }
+
     const db = await getDb(env);
 
     // GET /api/archive
@@ -81,7 +104,7 @@ export async function onRequest(context) {
           ...db,
           cloudStatus: {
             connected: true,
-            mode: 'cloudflare-edge',
+            mode: env?.ARCHIVE_KV ? 'cloudflare-kv' : 'cloudflare-edge',
             updatedAt: db.updatedAt,
           },
         }),
@@ -89,103 +112,71 @@ export async function onRequest(context) {
       );
     }
 
-    // POST /api/photos
+    // POST /api/photos — Upload photos to Cloudflare KV + update archive metadata
     if (method === 'POST' && route === 'photos') {
-      const contentType = request.headers.get('content-type') || '';
+      const formData = await request.formData();
+      const files = formData.getAll('files');
+      const metadataRaw = formData.get('metadata');
+      const metadataList = metadataRaw ? JSON.parse(metadataRaw) : [];
       const createdPhotos = [];
 
-      if (contentType.includes('application/json')) {
-        const body = await request.json();
-        const items = body.items || [];
-        for (const meta of items) {
-          const takenAtIso = meta.takenAt
-            ? new Date(meta.takenAt).toISOString()
-            : new Date().toISOString();
-          const d = new Date(takenAtIso);
-          const month = d.getMonth() + 1;
-          const dateStr = takenAtIso.slice(0, 10);
-          const width = Number(meta.width) || 1200;
-          const height = Number(meta.height) || 900;
-          const aspectRatio = Number((width / height).toFixed(2));
-          let orientation = 'landscape';
-          if (aspectRatio < 0.92) orientation = 'portrait';
-          else if (aspectRatio <= 1.08) orientation = 'square';
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const meta = metadataList[i] || {};
+        const photoId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const mime = file.type || 'image/jpeg';
+        const buf = await file.arrayBuffer();
 
-          const newPhoto = {
-            id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            url: meta.dataUrl || meta.url,
-            takenAt: takenAtIso,
-            dateStr,
-            month,
-            season: getSeasonFromMonth(month),
-            memberId: meta.memberId || db.members[0]?.id || 'member-first',
-            location: meta.location || '',
-            caption: meta.caption || '',
-            aspectRatio,
-            orientation,
-            width,
-            height,
-            exif: meta.exif || { camera: 'Smart Device', source: 'Auto Date Extraction' },
-            isFavorite: Boolean(meta.isFavorite),
-            comments: [],
-          };
-          db.photos.push(newPhoto);
-          createdPhotos.push(newPhoto);
-        }
-      } else {
-        const formData = await request.formData();
-        const files = formData.getAll('files');
-        const metadataRaw = formData.get('metadata');
-        const metadataList = metadataRaw ? JSON.parse(metadataRaw) : [];
-
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          const meta = metadataList[i] || {};
-          const buf = await file.arrayBuffer();
+        let photoUrl = '';
+        if (env?.ARCHIVE_KV) {
+          // Store full binary in its own KV key (supports up to 25MB per photo, 1GB total free tier)
+          await env.ARCHIVE_KV.put(`photo_blob:${photoId}`, buf, {
+            metadata: { contentType: mime },
+          });
+          photoUrl = `/api/photo-image/${photoId}`;
+        } else {
           const bytes = new Uint8Array(buf);
           let binary = '';
           const chunkSize = 0x8000;
           for (let j = 0; j < bytes.length; j += chunkSize) {
             binary += String.fromCharCode(...bytes.subarray(j, j + chunkSize));
           }
-          const base64 = btoa(binary);
-          const mime = file.type || 'image/jpeg';
-          const photoUrl = `data:${mime};base64,${base64}`;
-
-          const takenAtIso = meta.takenAt
-            ? new Date(meta.takenAt).toISOString()
-            : new Date().toISOString();
-          const d = new Date(takenAtIso);
-          const month = d.getMonth() + 1;
-          const dateStr = takenAtIso.slice(0, 10);
-          const width = Number(meta.width) || 1200;
-          const height = Number(meta.height) || 900;
-          const aspectRatio = Number((width / height).toFixed(2));
-          let orientation = 'landscape';
-          if (aspectRatio < 0.92) orientation = 'portrait';
-          else if (aspectRatio <= 1.08) orientation = 'square';
-
-          const newPhoto = {
-            id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            url: photoUrl,
-            takenAt: takenAtIso,
-            dateStr,
-            month,
-            season: getSeasonFromMonth(month),
-            memberId: meta.memberId || db.members[0]?.id || 'member-first',
-            location: meta.location || '',
-            caption: meta.caption || '',
-            aspectRatio,
-            orientation,
-            width,
-            height,
-            exif: meta.exif || { camera: 'Smart Device', source: 'Auto Date Extraction' },
-            isFavorite: Boolean(meta.isFavorite),
-            comments: [],
-          };
-          db.photos.push(newPhoto);
-          createdPhotos.push(newPhoto);
+          photoUrl = `data:${mime};base64,${btoa(binary)}`;
         }
+
+        const takenAtIso = meta.takenAt
+          ? new Date(meta.takenAt).toISOString()
+          : new Date().toISOString();
+        const d = new Date(takenAtIso);
+        const month = d.getMonth() + 1;
+        const dateStr = takenAtIso.slice(0, 10);
+        const width = Number(meta.width) || 1200;
+        const height = Number(meta.height) || 900;
+        const aspectRatio = Number((width / height).toFixed(2));
+        let orientation = 'landscape';
+        if (aspectRatio < 0.92) orientation = 'portrait';
+        else if (aspectRatio <= 1.08) orientation = 'square';
+
+        const newPhoto = {
+          id: photoId,
+          url: photoUrl,
+          takenAt: takenAtIso,
+          dateStr,
+          month,
+          season: getSeasonFromMonth(month),
+          memberId: meta.memberId || db.members[0]?.id || 'member-first',
+          location: meta.location || '',
+          caption: meta.caption || '',
+          aspectRatio,
+          orientation,
+          width,
+          height,
+          exif: meta.exif || { camera: 'Smart Device', source: 'Auto Date Extraction' },
+          isFavorite: Boolean(meta.isFavorite),
+          comments: [],
+        };
+        db.photos.push(newPhoto);
+        createdPhotos.push(newPhoto);
       }
 
       await saveDb(env, db);
@@ -231,6 +222,13 @@ export async function onRequest(context) {
     // DELETE /api/photos/:id
     if (method === 'DELETE' && pathParts[0] === 'photos' && pathParts.length === 2) {
       const photoId = pathParts[1];
+      if (env?.ARCHIVE_KV) {
+        try {
+          await env.ARCHIVE_KV.delete(`photo_blob:${photoId}`);
+        } catch {
+          // ignore
+        }
+      }
       db.photos = db.photos.filter((p) => p.id !== photoId);
       await saveDb(env, db);
       return new Response(JSON.stringify({ allPhotos: db.photos }), {
@@ -410,7 +408,7 @@ export async function onRequest(context) {
         JSON.stringify({
           cloudStatus: {
             connected: true,
-            mode: supabaseUrl ? 'supabase' : 'cloudflare-edge',
+            mode: supabaseUrl ? 'supabase' : 'cloudflare-kv',
             supabaseUrl: supabaseUrl || null,
           },
         }),

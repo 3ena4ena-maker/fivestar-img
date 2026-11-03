@@ -60,15 +60,60 @@ export async function extractPhotoMetadata(file) {
     if (!isNaN(parsed.getTime())) filenameDate = parsed;
   }
 
-  // Get image natural dimensions
+  // Get image natural dimensions & create optimized print-grade file if very large
   const dimensions = await new Promise((resolve) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
-      resolve({ width: img.naturalWidth || 1200, height: img.naturalHeight || 900, previewUrl: objectUrl });
+      const natW = img.naturalWidth || 1200;
+      const natH = img.naturalHeight || 900;
+      const maxDim = 1800;
+      let targetW = natW;
+      let targetH = natH;
+      if (natW > maxDim || natH > maxDim) {
+        if (natW >= natH) {
+          targetW = maxDim;
+          targetH = Math.round((natH * maxDim) / natW);
+        } else {
+          targetH = maxDim;
+          targetW = Math.round((natW * maxDim) / natH);
+        }
+      }
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        canvas.toBlob(
+          (blob) => {
+            const optimizedFile = blob
+              ? new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                  type: 'image/jpeg',
+                })
+              : file;
+            resolve({
+              width: natW,
+              height: natH,
+              previewUrl: objectUrl,
+              optimizedFile,
+            });
+          },
+          'image/jpeg',
+          0.86
+        );
+      } catch {
+        resolve({
+          width: natW,
+          height: natH,
+          previewUrl: objectUrl,
+          optimizedFile: file,
+        });
+      }
     };
     img.onerror = () => {
-      resolve({ width: 1200, height: 900, previewUrl: objectUrl });
+      resolve({ width: 1200, height: 900, previewUrl: objectUrl, optimizedFile: file });
     };
     img.src = objectUrl;
   });
@@ -121,6 +166,7 @@ export async function extractPhotoMetadata(file) {
     width: dimensions.width,
     height: dimensions.height,
     previewUrl: dimensions.previewUrl,
+    optimizedFile: dimensions.optimizedFile || file,
     exif: {
       camera: cameraModel || 'Smart Mobile Camera',
       lens: lensDesc || 'Standard Lens',

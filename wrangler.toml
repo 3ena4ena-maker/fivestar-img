@@ -1,0 +1,8 @@
+name = "fivestar-img"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "ARCHIVE_KV"
+id = "237b49b89a334ba994736892bbec1f55"
+preview_id = "237b49b89a334ba994736892bbec1f55"
