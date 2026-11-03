@@ -293,16 +293,20 @@ export async function onRequest(context) {
         if (existing) {
           if (typeof name === 'string' && name.trim()) {
             existing.name = name.trim();
-            existing.avatar = avatar || name.trim().slice(0, 1);
           }
           if (typeof city === 'string') existing.city = city.trim();
           if (typeof role === 'string') {
             existing.role = role.trim();
-          } else if (typeof city === 'string') {
+          } else if (typeof city === 'string' && city.trim()) {
             existing.role = city.trim();
           }
           if (color) existing.color = color;
           if (badgeBg) existing.badgeBg = badgeBg;
+          if (typeof avatar === 'string' && avatar.trim()) {
+            existing.avatar = avatar.trim().slice(0, 2);
+          } else if (typeof name === 'string' && name.trim()) {
+            existing.avatar = name.trim().slice(0, 1);
+          }
           await saveDb(env, db);
           return new Response(
             JSON.stringify({ member: existing, members: db.members }),
@@ -324,9 +328,9 @@ export async function onRequest(context) {
         name: (name || '가족').trim(),
         role: (role || city || '가족 구성원').trim(),
         city: (city || '서울').trim(),
-        color: pick.color,
-        badgeBg: pick.badgeBg,
-        avatar: (name || '가').trim().slice(0, 1),
+        color: color || pick.color,
+        badgeBg: badgeBg || pick.badgeBg,
+        avatar: avatar ? avatar.trim().slice(0, 2) : (name || '가').trim().slice(0, 1),
       };
       db.members.push(newMember);
       await saveDb(env, db);
@@ -345,16 +349,22 @@ export async function onRequest(context) {
           headers: jsonHeaders,
         });
       }
-      const { name, city, role } = await request.json();
+      const { name, city, role, color, badgeBg, avatar } = await request.json();
       if (typeof name === 'string' && name.trim()) {
         existing.name = name.trim();
-        existing.avatar = name.trim().slice(0, 1);
       }
       if (typeof city === 'string') existing.city = city.trim();
       if (typeof role === 'string') {
         existing.role = role.trim();
       } else if (typeof city === 'string' && city.trim()) {
         existing.role = city.trim();
+      }
+      if (color) existing.color = color;
+      if (badgeBg) existing.badgeBg = badgeBg;
+      if (typeof avatar === 'string' && avatar.trim()) {
+        existing.avatar = avatar.trim().slice(0, 2);
+      } else if (typeof name === 'string' && name.trim()) {
+        existing.avatar = name.trim().slice(0, 1);
       }
       await saveDb(env, db);
       return new Response(JSON.stringify({ member: existing, members: db.members }), {

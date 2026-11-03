@@ -1,24 +1,6 @@
 {
   "members": [
     {
-      "id": "member-mom",
-      "name": "엄마 (정숙)",
-      "role": "강릉 본가",
-      "city": "강릉",
-      "color": "#8C5A3C",
-      "badgeBg": "#F5EBE6",
-      "avatar": "모"
-    },
-    {
-      "id": "member-dad",
-      "name": "아빠 (철호)",
-      "role": "강릉 본가",
-      "city": "강릉",
-      "color": "#3B5249",
-      "badgeBg": "#E6EFEA",
-      "avatar": "부"
-    },
-    {
       "id": "member-first",
       "name": "큰딸 세나",
       "role": "서울 마포",
@@ -44,6 +26,24 @@
       "color": "#B85D19",
       "badgeBg": "#F9EFE6",
       "avatar": "막"
+    },
+    {
+      "id": "member-1793696027813",
+      "name": "영선 엄마",
+      "role": "부산 본가",
+      "city": "부산",
+      "color": "#7A4988",
+      "badgeBg": "#F3EAF6",
+      "avatar": "영"
+    },
+    {
+      "id": "member-1793696058907",
+      "name": "종록 아빠",
+      "role": "부산 본가",
+      "city": "부산",
+      "color": "#7A4988",
+      "badgeBg": "#F3EAF6",
+      "avatar": "종"
     }
   ],
   "bookSettings": {
@@ -466,5 +466,5 @@
       "comments": []
     }
   ],
-  "updatedAt": "2026-11-03T08:23:26.727Z"
+  "updatedAt": "2026-11-03T08:54:23.825Z"
 }

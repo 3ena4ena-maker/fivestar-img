@@ -357,26 +357,33 @@ async function startServer() {
   app.post('/api/members', async (req, res) => {
     const db = loadLocalDb();
     const { id, name, role, city, color, badgeBg, avatar } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: '이름을 입력해 주세요.' });
-    }
 
     if (id) {
       const existing = db.members.find((m) => m.id === id);
       if (existing) {
-        existing.name = name.trim();
+        if (typeof name === 'string' && name.trim()) {
+          existing.name = name.trim();
+        }
         if (typeof city === 'string') existing.city = city.trim();
         if (typeof role === 'string') {
           existing.role = role.trim();
-        } else if (typeof city === 'string') {
+        } else if (typeof city === 'string' && city.trim()) {
           existing.role = city.trim();
         }
-        existing.color = color || existing.color;
-        existing.badgeBg = badgeBg || existing.badgeBg;
-        existing.avatar = avatar || name.trim().slice(0, 1);
+        if (color) existing.color = color;
+        if (badgeBg) existing.badgeBg = badgeBg;
+        if (typeof avatar === 'string' && avatar.trim()) {
+          existing.avatar = avatar.trim().slice(0, 2);
+        } else if (typeof name === 'string' && name.trim()) {
+          existing.avatar = name.trim().slice(0, 1);
+        }
         await persistState(db);
         return res.json({ member: existing, members: db.members });
       }
+    }
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: '이름을 입력해 주세요.' });
     }
 
     const palette = [
@@ -404,17 +411,16 @@ async function startServer() {
     res.status(201).json({ member: newMember, members: db.members });
   });
 
-  // PATCH /api/members/:id — Update a specific member's city, role, or name
+  // PATCH /api/members/:id — Update a specific member's city, role, name, avatar, color
   app.patch('/api/members/:id', async (req, res) => {
     const db = loadLocalDb();
     const existing = db.members.find((m) => m.id === req.params.id);
     if (!existing) {
       return res.status(404).json({ error: '가족 구성원을 찾을 수 없습니다.' });
     }
-    const { name, city, role } = req.body;
+    const { name, city, role, color, badgeBg, avatar } = req.body;
     if (typeof name === 'string' && name.trim()) {
       existing.name = name.trim();
-      existing.avatar = name.trim().slice(0, 1);
     }
     if (typeof city === 'string') {
       existing.city = city.trim();
@@ -423,6 +429,13 @@ async function startServer() {
       existing.role = role.trim();
     } else if (typeof city === 'string' && city.trim()) {
       existing.role = city.trim();
+    }
+    if (color) existing.color = color;
+    if (badgeBg) existing.badgeBg = badgeBg;
+    if (typeof avatar === 'string' && avatar.trim()) {
+      existing.avatar = avatar.trim().slice(0, 2);
+    } else if (typeof name === 'string' && name.trim()) {
+      existing.avatar = name.trim().slice(0, 1);
     }
     await persistState(db);
     res.json({ member: existing, members: db.members });

@@ -4,16 +4,15 @@ import {
   Calendar,
   Upload,
   Users,
-  Cloud,
   Share2,
-  Sparkles,
   CheckCircle2,
   MapPin,
-  ChevronDown,
+  UserCog,
 } from 'lucide-react';
 import { buildPhotobookPages } from './utils/bookLayoutEngine';
 import PhotobookStudioView from './components/PhotobookStudioView';
 import TimelineArchiveView from './components/TimelineArchiveView';
+import ProfileFamilySettingsPage from './components/ProfileFamilySettingsPage';
 import UploadModal from './components/UploadModal';
 import PhotoDetailModal from './components/PhotoDetailModal';
 import FamilyCloudModal from './components/FamilyCloudModal';
@@ -37,7 +36,7 @@ export default function App() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Active mode: 'book' (Photobook Flipbook & PDF Studio) | 'timeline' (Season/Month Archive)
+  // Active page tab: 'book' | 'timeline' | 'profile'
   const [activeTab, setActiveTab] = useState('book');
 
   // Active logged-in family member profile (persisted in localStorage per device)
@@ -50,7 +49,7 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedMemberFilter, setSelectedMemberFilter] = useState('all');
 
-  // Page layout variant overrides (allows cycling layout style on any photobook page)
+  // Page layout variant overrides
   const [pageVariants, setPageVariants] = useState({});
 
   // Modals state
@@ -60,8 +59,6 @@ export default function App() {
     open: false,
     tab: 'members',
   });
-  const [isQuickCityEdit, setIsQuickCityEdit] = useState(false);
-  const [quickCityValue, setQuickCityValue] = useState('');
   const [toastMsg, setToastMsg] = useState('');
 
   const showToast = (msg) => {
@@ -96,11 +93,11 @@ export default function App() {
     localStorage.setItem('fivestar_active_member', id);
     const found = members.find((m) => m.id === id);
     if (found) {
-      showToast(`현재 접속 프로필이 '${found.name} (${found.city})'(으)로 변경되었습니다.`);
+      showToast(`현재 내 프로필이 '${found.name} (${found.city})'(으)로 선택되었습니다.`);
     }
   };
 
-  // Compile photobook pages automatically whenever photos or bookSettings change
+  // Compile photobook pages automatically whenever photos, members, or bookSettings change
   const compiledPages = useMemo(() => {
     return buildPhotobookPages(photos, members, bookSettings, pageVariants);
   }, [photos, members, bookSettings, pageVariants]);
@@ -173,6 +170,7 @@ export default function App() {
   };
 
   const handleUpdateBookSettings = async (patch) => {
+    setBookSettings((prev) => ({ ...prev, ...patch }));
     const res = await fetch('/api/book-settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -181,7 +179,20 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setBookSettings(data.bookSettings);
-      showToast('포토북 설정이 저장되었습니다.');
+    }
+  };
+
+  const syncSubtitleCities = (updatedMembers) => {
+    const updatedCities = [...new Set(updatedMembers.map((m) => m.city).filter(Boolean))];
+    if (
+      bookSettings.subtitle &&
+      bookSettings.subtitle.includes('에서 보낸') &&
+      updatedCities.length > 0
+    ) {
+      const newSub = `${updatedCities.join(' · ')}에서 보낸 ${
+        bookSettings.year || 2026
+      }년 우리 가족의 사계절 기록`;
+      handleUpdateBookSettings({ subtitle: newSub });
     }
   };
 
@@ -194,44 +205,58 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setMembers(data.members);
-      const updatedCities = [...new Set(data.members.map((m) => m.city).filter(Boolean))];
-      if (
-        bookSettings.subtitle &&
-        bookSettings.subtitle.includes('에서 보낸') &&
-        updatedCities.length > 0
-      ) {
-        const newSub = `${updatedCities.join(' · ')}에서 보낸 ${
-          bookSettings.year || 2026
-        }년 우리 가족의 사계절 기록`;
-        handleUpdateBookSettings({ subtitle: newSub });
-      }
+      syncSubtitleCities(data.members);
       showToast(`새 가족 구성원 '${memberPayload.name}'님이 추가되었습니다.`);
     }
   };
 
   const handleUpdateMember = async (memberId, patch) => {
-    const res = await fetch(`/api/members/${memberId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
+    // 1. Instant optimistic state update so UI reflects new name/city immediately
+    const optimisticMembers = members.map((m) => {
+      if (m.id !== memberId) return m;
+      const nextName = patch.name ? patch.name.trim() : m.name;
+      const nextCity = typeof patch.city === 'string' ? patch.city.trim() : m.city;
+      const nextRole =
+        typeof patch.role === 'string' && patch.role.trim() ? patch.role.trim() : nextCity;
+      return {
+        ...m,
+        name: nextName,
+        city: nextCity,
+        role: nextRole,
+        avatar: patch.avatar ? patch.avatar.trim().slice(0, 2) : nextName.slice(0, 1),
+        color: patch.color || m.color,
+        badgeBg: patch.badgeBg || m.badgeBg,
+      };
     });
-    if (res.ok) {
-      const data = await res.json();
-      setMembers(data.members);
-      const updatedCities = [...new Set(data.members.map((m) => m.city).filter(Boolean))];
-      if (
-        bookSettings.subtitle &&
-        bookSettings.subtitle.includes('에서 보낸') &&
-        updatedCities.length > 0
-      ) {
-        const newSub = `${updatedCities.join(' · ')}에서 보낸 ${
-          bookSettings.year || 2026
-        }년 우리 가족의 사계절 기록`;
-        handleUpdateBookSettings({ subtitle: newSub });
+    setMembers(optimisticMembers);
+    syncSubtitleCities(optimisticMembers);
+
+    // 2. Persist via POST /api/members (with id) for 100% compatibility on both Local & Cloudflare KV
+    try {
+      const target = optimisticMembers.find((m) => m.id === memberId);
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: memberId,
+          ...target,
+          ...patch,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.members) {
+          setMembers(data.members);
+          syncSubtitleCities(data.members);
+        }
       }
       showToast(
-        `'${patch.name || '가족'}'님의 거주 도시가 '${patch.city}'(으)로 업데이트되었습니다.`
+        `'${patch.name || target?.name || '가족'}' 프로필 및 거주 도시('${
+          patch.city || target?.city || ''
+        }')가 저장되었습니다!`
       );
+    } catch (err) {
+      console.error('Failed to update member:', err);
     }
   };
 
@@ -240,6 +265,8 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setMembers(data.members);
+      syncSubtitleCities(data.members);
+      showToast('가족 구성원이 삭제되었습니다.');
     }
   };
 
@@ -276,7 +303,7 @@ export default function App() {
 
   const activeMember =
     members.find((m) => m.id === activeMemberId) ||
-    members[0] || { name: '가족', city: '서울', color: '#141413' };
+    members[0] || { id: 'member-first', name: '가족', city: '서울', color: '#141413' };
 
   const uniqueCities = [...new Set(members.map((m) => m.city).filter(Boolean))];
   const activeMonthsCount = new Set(photos.map((p) => p.month)).size;
@@ -303,14 +330,14 @@ export default function App() {
               <span className="hidden md:inline text-white/25">|</span>
               <button
                 type="button"
-                onClick={() => setFamilyModalState({ open: true, tab: 'members' })}
-                title="클릭하여 각 가족 구성원의 거주 도시를 설정하거나 변경합니다"
+                onClick={() => setActiveTab('profile')}
+                title="클릭하면 내 프로필 변경 / 가족 설정 페이지로 이동합니다"
                 className="inline-flex items-center gap-1.5 text-[11px] text-[#E6E4DD] hover:text-amber-300 transition-colors cursor-pointer"
               >
                 <MapPin className="w-3 h-3 text-amber-400" />
                 <span>연결된 가족 도시: {uniqueCities.join(' · ') || '도시 설정하기'}</span>
-                <span className="px-1.5 py-0.2 bg-white/10 rounded-xs text-[10px] text-amber-300">
-                  각자 도시 설정 ✎
+                <span className="px-1.5 py-0.2 bg-white/15 rounded-xs text-[10px] text-amber-300">
+                  도시·프로필 변경 →
                 </span>
               </button>
             </div>
@@ -335,7 +362,7 @@ export default function App() {
               {/* Invite Link Button */}
               <button
                 type="button"
-                onClick={() => setFamilyModalState({ open: true, tab: 'invite' })}
+                onClick={() => setActiveTab('profile')}
                 className="inline-flex items-center gap-1 text-[11px] text-amber-300 hover:underline cursor-pointer"
               >
                 <Share2 className="w-3 h-3" />
@@ -356,7 +383,10 @@ export default function App() {
                   <span>·</span>
                   <span>AUTO-LAYOUT BY EXIF DATE</span>
                 </div>
-                <h1 className="mt-1 font-editorial-en text-3xl sm:text-5xl font-normal tracking-tight text-[#141413] uppercase">
+                <h1
+                  onClick={() => setActiveTab('book')}
+                  className="mt-1 font-editorial-en text-3xl sm:text-5xl font-normal tracking-tight text-[#141413] uppercase cursor-pointer"
+                >
                   {bookSettings.title || 'OUR YEAR, APART YET TOGETHER'}
                 </h1>
                 <p className="mt-1.5 font-editorial-ko text-sm sm:text-base text-[#4A4944]">
@@ -364,96 +394,38 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Right Controls: Active Member Switcher + Quick City Setting & Upload CTA */}
+              {/* Right Controls: Active Member Switcher + Dedicated Profile Settings Page Button & Upload CTA */}
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Who am I switcher + Quick Inline City Editor */}
-                <div className="flex flex-wrap items-center bg-[#F3F1EC] border border-[#141413]/15 px-3 py-1.5 gap-2">
-                  <div className="flex items-center">
-                    <span className="text-[10px] font-mono-meta uppercase tracking-wider text-[#71706B] mr-1.5">
-                      내 프로필:
-                    </span>
-                    <select
-                      value={activeMember.id}
-                      onChange={(e) => {
-                        handleSelectActiveMember(e.target.value);
-                        setIsQuickCityEdit(false);
-                      }}
-                      className="bg-transparent text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
-                    >
-                      {members.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} ({m.city})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <span className="text-[#141413]/20">|</span>
-
-                  {isQuickCityEdit ? (
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        if (quickCityValue.trim() && activeMember.id) {
-                          await handleUpdateMember(activeMember.id, {
-                            name: activeMember.name,
-                            city: quickCityValue.trim(),
-                            role: quickCityValue.trim(),
-                          });
-                        }
-                        setIsQuickCityEdit(false);
-                      }}
-                      className="inline-flex items-center gap-1"
-                    >
-                      <input
-                        type="text"
-                        value={quickCityValue}
-                        onChange={(e) => setQuickCityValue(e.target.value)}
-                        placeholder="내 도시 (예: 서울, 대전)"
-                        className="bg-white border border-[#141413]/25 px-2 py-0.5 text-xs w-28 focus:outline-none focus:border-[#141413]"
-                        autoFocus
-                      />
-                      <button
-                        type="submit"
-                        className="px-2 py-0.5 bg-[#141413] text-[#FAF9F6] text-[11px] font-medium cursor-pointer"
-                      >
-                        저장
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsQuickCityEdit(false)}
-                        className="px-1.5 py-0.5 text-[11px] text-[#71706B] cursor-pointer"
-                      >
-                        취소
-                      </button>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuickCityValue(activeMember.city || '');
-                        setIsQuickCityEdit(true);
-                      }}
-                      title="내 거주 도시를 직접 설정하거나 변경합니다"
-                      className="inline-flex items-center gap-1 text-xs text-[#8C5A3C] hover:text-[#141413] font-medium cursor-pointer"
-                    >
-                      <MapPin className="w-3 h-3" />
-                      <span>내 도시: {activeMember.city || '설정'}</span>
-                      <span className="text-[10px] underline underline-offset-2 ml-0.5">
-                        변경
-                      </span>
-                    </button>
-                  )}
+                {/* Who am I switcher */}
+                <div className="flex items-center bg-[#F3F1EC] border border-[#141413]/15 px-3 py-2 gap-2">
+                  <span className="text-[10px] font-mono-meta uppercase tracking-wider text-[#71706B]">
+                    내 프로필:
+                  </span>
+                  <select
+                    value={activeMember.id}
+                    onChange={(e) => handleSelectActiveMember(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
+                  >
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.city})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* Family Member & Invite Settings */}
+                {/* Dedicated Profile & City Settings Page Button */}
                 <button
                   type="button"
-                  onClick={() => setFamilyModalState({ open: true, tab: 'members' })}
-                  className="px-3.5 py-2.5 bg-white border border-[#141413]/20 hover:border-[#141413] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  onClick={() => setActiveTab('profile')}
+                  className={`px-4 py-2.5 border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    activeTab === 'profile'
+                      ? 'bg-[#8C5A3C] text-white border-[#8C5A3C]'
+                      : 'bg-white text-[#141413] border-[#141413]/25 hover:border-[#141413]'
+                  }`}
                 >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>가족·도시 설정 ({members.length})</span>
+                  <UserCog className="w-3.5 h-3.5" />
+                  <span>내 프로필 변경 / 가족 설정</span>
                 </button>
 
                 {/* Primary Upload Photo CTA */}
@@ -470,8 +442,8 @@ export default function App() {
 
             {/* Navigation Bar & Live Book Compilation Summary */}
             <div className="mt-7 pt-4 border-t border-[#141413]/12 flex flex-wrap items-center justify-between gap-4">
-              {/* Primary View Tabs */}
-              <div className="flex items-center gap-2">
+              {/* Primary View Tabs (01 Photobook / 02 Timeline / 03 Profile & Family Settings) */}
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setActiveTab('book')}
@@ -482,7 +454,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
-                  <span>01. 포토북 펼침뷰 & PDF 인쇄 스튜디오</span>
+                  <span>01. 포토북 펼침뷰 & PDF 스튜디오</span>
                   <span
                     className={`px-1.5 py-0.2 text-[10px] font-mono-meta rounded-xs ${
                       activeTab === 'book'
@@ -513,6 +485,28 @@ export default function App() {
                     }`}
                   >
                     {photos.length}장
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile')}
+                  className={`px-4 py-2 text-xs font-medium flex items-center gap-2 border transition-all cursor-pointer ${
+                    activeTab === 'profile'
+                      ? 'bg-[#141413] text-[#FAF9F6] border-[#141413]'
+                      : 'bg-white text-[#5A5852] border-[#141413]/15 hover:text-[#141413]'
+                  }`}
+                >
+                  <UserCog className="w-3.5 h-3.5" />
+                  <span>03. 내 프로필 변경 / 가족 설정</span>
+                  <span
+                    className={`px-1.5 py-0.2 text-[10px] font-mono-meta rounded-xs ${
+                      activeTab === 'profile'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-[#F3F1EC] text-[#8C5A3C]'
+                    }`}
+                  >
+                    {activeMember.name} · {activeMember.city}
                   </span>
                 </button>
               </div>
@@ -551,7 +545,7 @@ export default function App() {
               onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
               onCycleVariant={handleCyclePageVariant}
             />
-          ) : (
+          ) : activeTab === 'timeline' ? (
             <TimelineArchiveView
               photos={photos}
               members={members}
@@ -566,6 +560,21 @@ export default function App() {
                 handleUpdatePhoto(photo.id, { isFavorite: !photo.isFavorite })
               }
               onOpenUpload={() => setIsUploadOpen(true)}
+              onSwitchToBookView={() => setActiveTab('book')}
+            />
+          ) : (
+            <ProfileFamilySettingsPage
+              members={members}
+              photos={photos}
+              activeMemberId={activeMember.id}
+              bookSettings={bookSettings}
+              cloudStatus={cloudStatus}
+              onSelectActiveMember={handleSelectActiveMember}
+              onUpdateMember={handleUpdateMember}
+              onAddMember={handleAddMember}
+              onDeleteMember={handleDeleteMember}
+              onUpdateBookSettings={handleUpdateBookSettings}
+              onResetArchive={handleResetArchive}
               onSwitchToBookView={() => setActiveTab('book')}
             />
           )}
@@ -583,10 +592,17 @@ export default function App() {
             <div className="flex items-center gap-4 font-mono-meta text-[11px]">
               <button
                 type="button"
+                onClick={() => setActiveTab('profile')}
+                className="hover:text-[#141413] underline underline-offset-4 cursor-pointer"
+              >
+                내 프로필 변경 / 가족·도시 설정
+              </button>
+              <button
+                type="button"
                 onClick={() => setFamilyModalState({ open: true, tab: 'cloud' })}
                 className="hover:text-[#141413] underline underline-offset-4 cursor-pointer"
               >
-                샘플 데이터 초기화 / 클라우드 설정
+                클라우드 DB 상태 확인
               </button>
               <span>FIVESTAR FAMILY EDITION</span>
             </div>
