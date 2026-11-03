@@ -290,7 +290,27 @@ export async function onRequest(context) {
 
     // POST /api/members
     if (method === 'POST' && route === 'members') {
-      const { id, name, role, city, color, badgeBg, avatar } = await request.json();
+      const { id, name, role, city, color, badgeBg, avatar, orderedIds } = await request.json();
+
+      if (Array.isArray(orderedIds) && orderedIds.length > 0) {
+        const map = new Map(db.members.map((m) => [m.id, m]));
+        const reordered = [];
+        for (const mId of orderedIds) {
+          if (map.has(mId)) {
+            reordered.push(map.get(mId));
+            map.delete(mId);
+          }
+        }
+        for (const leftover of map.values()) {
+          reordered.push(leftover);
+        }
+        db.members = reordered;
+        await saveDb(env, db);
+        return new Response(JSON.stringify({ members: db.members }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
       if (id) {
         const existing = db.members.find((m) => m.id === id);
         if (existing) {

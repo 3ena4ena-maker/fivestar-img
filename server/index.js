@@ -356,10 +356,28 @@ async function startServer() {
     res.json({ photo, allPhotos: db.photos });
   });
 
-  // POST /api/members — Add or update a family member
+  // POST /api/members — Add, update, or reorder family members
   app.post('/api/members', async (req, res) => {
     const db = loadLocalDb();
-    const { id, name, role, city, color, badgeBg, avatar } = req.body;
+    const { id, name, role, city, color, badgeBg, avatar, orderedIds } = req.body;
+
+    // Support reordering the entire family member list
+    if (Array.isArray(orderedIds) && orderedIds.length > 0) {
+      const map = new Map(db.members.map((m) => [m.id, m]));
+      const reordered = [];
+      for (const mId of orderedIds) {
+        if (map.has(mId)) {
+          reordered.push(map.get(mId));
+          map.delete(mId);
+        }
+      }
+      for (const leftover of map.values()) {
+        reordered.push(leftover);
+      }
+      db.members = reordered;
+      await persistState(db);
+      return res.json({ members: db.members });
+    }
 
     if (id) {
       const existing = db.members.find((m) => m.id === id);

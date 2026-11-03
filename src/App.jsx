@@ -278,6 +278,31 @@ export default function App() {
     }
   };
 
+  const handleReorderMembers = async (reorderedMembers) => {
+    // 1. Optimistic update so the UI & connected cities order update immediately
+    setMembers(reorderedMembers);
+    syncSubtitleCities(reorderedMembers);
+
+    try {
+      const orderedIds = reorderedMembers.map((m) => m.id);
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedIds }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.members) {
+          setMembers(data.members);
+          syncSubtitleCities(data.members);
+        }
+      }
+      showToast('가족 구성원 및 연결된 도시 순서가 변경·저장되었습니다.');
+    } catch (err) {
+      console.error('Failed to reorder members:', err);
+    }
+  };
+
   const handleSaveCloudConfig = async (cfg) => {
     const res = await fetch('/api/cloud-config', {
       method: 'POST',
@@ -581,6 +606,7 @@ export default function App() {
               cloudStatus={cloudStatus}
               onSelectActiveMember={handleSelectActiveMember}
               onUpdateMember={handleUpdateMember}
+              onReorderMembers={handleReorderMembers}
               onAddMember={handleAddMember}
               onDeleteMember={handleDeleteMember}
               onUpdateBookSettings={handleUpdateBookSettings}

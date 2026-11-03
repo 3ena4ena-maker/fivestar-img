@@ -13,6 +13,9 @@ import {
   Edit3,
   BookOpen,
   Database,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 
 const COLOR_PRESETS = [
@@ -49,12 +52,15 @@ export default function ProfileFamilySettingsPage({
   cloudStatus = {},
   onSelectActiveMember,
   onUpdateMember,
+  onReorderMembers,
   onAddMember,
   onDeleteMember,
   onUpdateBookSettings,
   onResetArchive,
   onSwitchToBookView,
 }) {
+  const [draggedMemberId, setDraggedMemberId] = useState(null);
+  const [dragOverMemberId, setDragOverMemberId] = useState(null);
   const activeMember =
     members.find((m) => m.id === activeMemberId) ||
     members[0] || {
@@ -152,6 +158,54 @@ export default function ProfileFamilySettingsPage({
       role: rowRole.trim() || cleanCity,
     });
     setEditingMemberId(null);
+  };
+
+  const handleMemberDragStart = (e, memberId) => {
+    setDraggedMemberId(memberId);
+    e.dataTransfer.effectAllowed = 'move';
+    try {
+      e.dataTransfer.setData('text/plain', memberId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMemberDragOver = (e, targetId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverMemberId !== targetId) {
+      setDragOverMemberId(targetId);
+    }
+  };
+
+  const handleMemberDrop = (e, targetId) => {
+    e.preventDefault();
+    const fromId = draggedMemberId;
+    setDraggedMemberId(null);
+    setDragOverMemberId(null);
+    if (!fromId || fromId === targetId) return;
+
+    const fromIdx = members.findIndex((m) => m.id === fromId);
+    const toIdx = members.findIndex((m) => m.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...members];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    if (onReorderMembers) {
+      onReorderMembers(reordered);
+    }
+  };
+
+  const handleMoveByOffset = (index, delta) => {
+    const targetIdx = index + delta;
+    if (targetIdx < 0 || targetIdx >= members.length) return;
+    const reordered = [...members];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIdx, 0, moved);
+    if (onReorderMembers) {
+      onReorderMembers(reordered);
+    }
   };
 
   const handleAddMemberSubmit = async (e) => {
@@ -475,27 +529,47 @@ export default function ProfileFamilySettingsPage({
 
       {/* SECTION 2: 전체 가족 구성원 관리 & 새 가족 추가 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* All Family Members List with Direct City Edit */}
+        {/* All Family Members List with Drag-and-Drop Reordering & Direct City Edit */}
         <div className="lg:col-span-7 bg-white border border-[#141413]/15 p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-[#141413]/12 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#141413]/12 pb-3">
             <div>
               <span className="text-[10px] font-mono-meta uppercase tracking-[0.2em] text-[#8C5A3C]">
-                ALL FAMILY MEMBERS & CITIES
+                ALL FAMILY MEMBERS & CITIES · DRAG TO REORDER
               </span>
               <h3 className="mt-0.5 font-editorial-ko text-lg font-semibold text-[#141413]">
                 전체 가족 구성원 및 도시 목록 ({members.length}명)
               </h3>
             </div>
-            <span className="text-xs text-[#71706B]">
-              모든 가족의 도시를 이곳에서 개별 수정할 수 있습니다
+            <span className="text-xs text-[#8C5A3C] font-medium bg-[#F3F1EC] px-2.5 py-1 border border-[#141413]/10">
+              ⠿ 항목을 마우스로 드래그하거나 ↑↓ 버튼으로 순서를 변경하세요
             </span>
           </div>
 
           <div className="divide-y divide-[#141413]/10 border border-[#141413]/12">
-            {members.map((m) => {
+            {members.map((m, idx) => {
               const isRowEditing = editingMemberId === m.id;
+              const isDragging = draggedMemberId === m.id;
+              const isDragOver = dragOverMemberId === m.id && draggedMemberId !== m.id;
+
               return (
-                <div key={m.id} className="p-4 bg-[#FAF9F6]/50">
+                <div
+                  key={m.id}
+                  draggable={!isRowEditing}
+                  onDragStart={(e) => handleMemberDragStart(e, m.id)}
+                  onDragOver={(e) => handleMemberDragOver(e, m.id)}
+                  onDrop={(e) => handleMemberDrop(e, m.id)}
+                  onDragEnd={() => {
+                    setDraggedMemberId(null);
+                    setDragOverMemberId(null);
+                  }}
+                  className={`p-4 transition-all ${
+                    isDragging
+                      ? 'opacity-45 bg-[#F3F1EC]'
+                      : isDragOver
+                      ? 'bg-amber-50 border-t-2 border-t-[#8C5A3C]'
+                      : 'bg-[#FAF9F6]/50 hover:bg-[#F3F1EC]/60'
+                  } ${!isRowEditing ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                >
                   {isRowEditing ? (
                     <div className="space-y-3 bg-white p-3.5 border border-[#141413]/25">
                       <div className="text-xs font-semibold text-[#8C5A3C]">
@@ -550,9 +624,20 @@ export default function ProfileFamilySettingsPage({
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2.5">
+                        {/* Drag Grip Handle + Order Number */}
+                        <div
+                          className="flex items-center gap-1 text-[#8E8A80] hover:text-[#141413] cursor-grab active:cursor-grabbing pr-1"
+                          title="드래그하여 순서를 변경합니다"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                          <span className="font-mono-meta text-[11px] font-semibold text-[#71706B]">
+                            0{idx + 1}
+                          </span>
+                        </div>
+
                         <span
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs"
+                          className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0"
                           style={{ backgroundColor: m.badgeBg, color: m.color }}
                         >
                           {m.avatar || m.name.slice(0, 1)}
@@ -569,7 +654,29 @@ export default function ProfileFamilySettingsPage({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {/* Up / Down Order Buttons for Mobile & Quick Click */}
+                        <div className="inline-flex border border-[#141413]/15 bg-white">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveByOffset(idx, -1)}
+                            title="위로 이동"
+                            className="p-1.5 text-[#5A5852] hover:text-[#141413] disabled:opacity-25 cursor-pointer"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === members.length - 1}
+                            onClick={() => handleMoveByOffset(idx, 1)}
+                            title="아래로 이동"
+                            className="p-1.5 text-[#5A5852] hover:text-[#141413] disabled:opacity-25 border-l border-[#141413]/15 cursor-pointer"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => startRowEdit(m)}
