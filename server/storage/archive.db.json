@@ -66,11 +66,11 @@
   ],
   "bookSettings": {
     "year": 2026,
-    "title": "OUR YEAR, APART YET TOGETHER",
+    "title": "박서 오피스 — 우리 가족 사진첩",
     "koreanTitle": "각자의 계절, 하나의 시간",
     "subtitle": "부산 · 덴버 · 대전에서 보낸 2026년 우리 가족의 사계절 기록",
-    "volumeLabel": "VOL. 01 — 2026 ANNUAL FAMILY EDITION",
-    "publisherName": "FIVESTAR FAMILY PRESS",
+    "volumeLabel": "제1권 — 2026년 우리 가족 사계절 사진첩",
+    "publisherName": "박서 오피스 가족 출판",
     "epilogueNote": "비록 사는 도시는 달라도 같은 계절의 빛을 나누며 살아온 우리의 일 년. 매달 각자의 자리에서 찍은 크고 작은 순간들이 모여 한 권의 집이 되었습니다.",
     "familyCode": "2026FAM",
     "paperTheme": "ivory",
@@ -78,7 +78,8 @@
     "includeMonthDividers": false,
     "includeExifDetails": true,
     "includeCommentsInBook": true,
-    "coverPhotoUrl": "https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=85"
+    "coverPhotoUrl": "https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=85",
+    "familyTitle": "박서 오피스 — 우리 가족 사진첩"
   },
   "photos": [
     {

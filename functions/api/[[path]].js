@@ -173,6 +173,8 @@ export async function onRequest(context) {
           height,
           exif: meta.exif || { camera: 'Smart Device', source: 'Auto Date Extraction' },
           isFavorite: Boolean(meta.isFavorite),
+          taggedMemberIds: Array.isArray(meta.taggedMemberIds) ? meta.taggedMemberIds : [],
+          postGroupId: meta.postGroupId || null,
           comments: [],
         };
         db.photos.push(newPhoto);
@@ -214,9 +216,50 @@ export async function onRequest(context) {
       if (typeof updates.cropX === 'number') target.cropX = updates.cropX;
       if (typeof updates.cropY === 'number') target.cropY = updates.cropY;
       if (typeof updates.cropZoom === 'number') target.cropZoom = updates.cropZoom;
+      if (Array.isArray(updates.taggedMemberIds)) {
+        target.taggedMemberIds = updates.taggedMemberIds;
+      }
+      if (updates.reactions && typeof updates.reactions === 'object') {
+        target.reactions = updates.reactions;
+      }
 
       await saveDb(env, db);
       return new Response(JSON.stringify({ photo: target, allPhotos: db.photos }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    // POST /api/photos/:id/reactions
+    if (
+      method === 'POST' &&
+      pathParts[0] === 'photos' &&
+      pathParts[2] === 'reactions' &&
+      pathParts.length === 3
+    ) {
+      const photo = db.photos.find((p) => p.id === pathParts[1]);
+      if (!photo) {
+        return new Response(JSON.stringify({ error: 'Photo not found' }), {
+          status: 404,
+          headers: jsonHeaders,
+        });
+      }
+      const { memberId, type = 'heart' } = await request.json();
+      const mId = memberId || db.members[0]?.id || 'member-first';
+      if (!photo.reactions || typeof photo.reactions !== 'object') {
+        photo.reactions = { heart: [], clap: [], smile: [] };
+      }
+      if (!Array.isArray(photo.reactions[type])) {
+        photo.reactions[type] = [];
+      }
+      const idx = photo.reactions[type].indexOf(mId);
+      if (idx === -1) {
+        photo.reactions[type].push(mId);
+      } else {
+        photo.reactions[type].splice(idx, 1);
+      }
+      await saveDb(env, db);
+      return new Response(JSON.stringify({ photo, allPhotos: db.photos }), {
         status: 200,
         headers: jsonHeaders,
       });
@@ -290,7 +333,7 @@ export async function onRequest(context) {
 
     // POST /api/members
     if (method === 'POST' && route === 'members') {
-      const { id, name, role, city, color, badgeBg, avatar, orderedIds } = await request.json();
+      const { id, name, role, city, color, badgeBg, avatar, avatarImage, isChildProfile, orderedIds } = await request.json();
 
       if (Array.isArray(orderedIds) && orderedIds.length > 0) {
         const map = new Map(db.members.map((m) => [m.id, m]));
@@ -325,6 +368,12 @@ export async function onRequest(context) {
           }
           if (color) existing.color = color;
           if (badgeBg) existing.badgeBg = badgeBg;
+          if (typeof avatarImage === 'string') {
+            existing.avatarImage = avatarImage;
+          }
+          if (typeof isChildProfile === 'boolean') {
+            existing.isChildProfile = isChildProfile;
+          }
           if (typeof avatar === 'string' && avatar.trim()) {
             existing.avatar = avatar.trim().slice(0, 2);
           } else if (typeof name === 'string' && name.trim()) {
@@ -354,6 +403,7 @@ export async function onRequest(context) {
         color: color || pick.color,
         badgeBg: badgeBg || pick.badgeBg,
         avatar: avatar ? avatar.trim().slice(0, 2) : (name || '가').trim().slice(0, 1),
+        isChildProfile: Boolean(isChildProfile),
       };
       db.members.push(newMember);
       await saveDb(env, db);

@@ -252,6 +252,8 @@ async function startServer() {
             source: 'Auto Date Extraction',
           },
           isFavorite: Boolean(meta.isFavorite),
+          taggedMemberIds: Array.isArray(meta.taggedMemberIds) ? meta.taggedMemberIds : [],
+          postGroupId: meta.postGroupId || null,
           comments: [],
         };
 
@@ -294,9 +296,40 @@ async function startServer() {
     if (typeof updates.cropX === 'number') target.cropX = updates.cropX;
     if (typeof updates.cropY === 'number') target.cropY = updates.cropY;
     if (typeof updates.cropZoom === 'number') target.cropZoom = updates.cropZoom;
+    if (Array.isArray(updates.taggedMemberIds)) {
+      target.taggedMemberIds = updates.taggedMemberIds;
+    }
+    if (updates.reactions && typeof updates.reactions === 'object') {
+      target.reactions = updates.reactions;
+    }
 
     await persistState(db);
     res.json({ photo: target, allPhotos: db.photos });
+  });
+
+  // POST /api/photos/:id/reactions — Toggle a family reaction (heart / clap / smile)
+  app.post('/api/photos/:id/reactions', async (req, res) => {
+    const db = loadLocalDb();
+    const photo = db.photos.find((p) => p.id === req.params.id);
+    if (!photo) return res.status(404).json({ error: 'Photo not found' });
+
+    const { memberId, type = 'heart' } = req.body;
+    const mId = memberId || db.members[0]?.id || 'member-first';
+    if (!photo.reactions || typeof photo.reactions !== 'object') {
+      photo.reactions = { heart: [], clap: [], smile: [] };
+    }
+    if (!Array.isArray(photo.reactions[type])) {
+      photo.reactions[type] = [];
+    }
+    const idx = photo.reactions[type].indexOf(mId);
+    if (idx === -1) {
+      photo.reactions[type].push(mId);
+    } else {
+      photo.reactions[type].splice(idx, 1);
+    }
+
+    await persistState(db);
+    res.json({ photo, allPhotos: db.photos });
   });
 
   // DELETE /api/photos/:id — Delete photo
@@ -359,7 +392,7 @@ async function startServer() {
   // POST /api/members — Add, update, or reorder family members
   app.post('/api/members', async (req, res) => {
     const db = loadLocalDb();
-    const { id, name, role, city, color, badgeBg, avatar, orderedIds } = req.body;
+    const { id, name, role, city, color, badgeBg, avatar, avatarImage, isChildProfile, orderedIds } = req.body;
 
     // Support reordering the entire family member list
     if (Array.isArray(orderedIds) && orderedIds.length > 0) {
@@ -393,6 +426,12 @@ async function startServer() {
         }
         if (color) existing.color = color;
         if (badgeBg) existing.badgeBg = badgeBg;
+        if (typeof avatarImage === 'string') {
+          existing.avatarImage = avatarImage;
+        }
+        if (typeof isChildProfile === 'boolean') {
+          existing.isChildProfile = isChildProfile;
+        }
         if (typeof avatar === 'string' && avatar.trim()) {
           existing.avatar = avatar.trim().slice(0, 2);
         } else if (typeof name === 'string' && name.trim()) {
@@ -425,6 +464,7 @@ async function startServer() {
       color: color || pick.color,
       badgeBg: badgeBg || pick.badgeBg,
       avatar: avatar || name.trim().slice(0, 1),
+      isChildProfile: Boolean(isChildProfile),
     };
 
     db.members.push(newMember);

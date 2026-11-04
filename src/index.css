@@ -10,8 +10,13 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #FAF9F6;
-    color: #141413;
+    background-color: #FBF8F3;
+    color: #5E3422;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.large-text-mode {
+    font-size: 118%;
   }
 }
 
@@ -70,20 +75,29 @@
     0 0 0 1px rgba(20, 20, 19, 0.08);
 }
 
+/* Hide scrollbar for horizontal carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #F3F1EC;
+  background: #FBF8F3;
 }
 ::-webkit-scrollbar-thumb {
-  background: #C9C5BA;
+  background: #CFC5A8;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #8E8A80;
+  background: #A69B80;
 }
 
 /* Print / High-Res PDF Book Export Mode */

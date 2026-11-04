@@ -66,11 +66,13 @@ export const DEFAULT_FAMILY_MEMBERS = [
 
 export const DEFAULT_BOOK_SETTINGS = {
   year: 2026,
-  title: 'OUR YEAR, APART YET TOGETHER',
+  familyTitle: '박서 오피스 — 우리 가족 사진첩',
+  title: '박서 오피스 — 우리 가족 사진첩',
   koreanTitle: '각자의 계절, 하나의 시간',
   subtitle: '부산 · 덴버 · 대전에서 보낸 2026년 우리 가족의 사계절 기록',
-  volumeLabel: 'VOL. 01 — 2026 ANNUAL FAMILY EDITION',
-  publisherName: 'FIVESTAR FAMILY PRESS',
+  volumeLabel: '제1권 — 2026년 우리 가족 사계절 사진첩',
+  publisherName: '박서 오피스 가족 출판',
+  subscriptionOwner: '막둥이 세나 (대표 1인 구독 · 온 가족 무제한 이용)',
   epilogueNote:
     '비록 사는 도시는 달라도 같은 계절의 빛을 나누며 살아온 우리의 일 년. 매달 각자의 자리에서 찍은 크고 작은 순간들이 모여 한 권의 집이 되었습니다.',
   familyCode: '2026FAM',
@@ -81,6 +83,30 @@ export const DEFAULT_BOOK_SETTINGS = {
   includeCommentsInBook: true,
   coverPhotoUrl:
     'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=85',
+  publishedBooks: [
+    {
+      id: 'book-2026-annual',
+      title: '2026년 우리 가족 사계절 사진첩 (연간 종합본)',
+      subtitle: '부산 · 덴버 · 대전 온 가족이 함께 모은 일 년의 기록',
+      periodType: 'annual',
+      periodLabel: '연간 전체 (2026년 1월 ~ 12월)',
+      createdAt: '2026-11-01',
+      status: '제작 완료 · 열람 및 인쇄 가능',
+      bindingType: '고급 양장 하드커버',
+    },
+    {
+      id: 'book-2026-half1',
+      title: '2026년 봄·여름 우리 가족 추억 모음집',
+      subtitle: '따뜻한 봄날부터 한여름 가족 상봉까지의 소중한 순간들',
+      periodType: 'half',
+      halfYear: 'first',
+      periodLabel: '상반기 (2026년 1월 ~ 6월)',
+      createdAt: '2026-07-05',
+      status: '제작 완료 · 열람 및 인쇄 가능',
+      bindingType: '소프트커버 매거진형',
+    },
+  ],
+  printOrders: [],
 };
 
 export const SAMPLE_PHOTOS = [

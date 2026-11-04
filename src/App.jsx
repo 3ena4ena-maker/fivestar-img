@@ -1,18 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen,
-  Calendar,
   Upload,
   Users,
   Share2,
   CheckCircle2,
   MapPin,
   UserCog,
+  Home,
+  Library,
+  Sparkles,
+  Camera,
+  ZoomIn,
+  Edit3,
+  Building2,
+  User,
 } from 'lucide-react';
 import { buildPhotobookPages } from './utils/bookLayoutEngine';
+import HomeFeedView from './components/HomeFeedView';
 import PhotobookStudioView from './components/PhotobookStudioView';
-import TimelineArchiveView from './components/TimelineArchiveView';
+import FamilyLibraryView from './components/FamilyLibraryView';
 import ProfileFamilySettingsPage from './components/ProfileFamilySettingsPage';
+import MyPageView from './components/MyPageView';
 import UploadModal from './components/UploadModal';
 import PhotoDetailModal from './components/PhotoDetailModal';
 import FamilyCloudModal from './components/FamilyCloudModal';
@@ -23,12 +32,15 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [bookSettings, setBookSettings] = useState({
     year: 2026,
-    title: 'OUR YEAR, APART YET TOGETHER',
+    familyTitle: '박서 오피스 — 우리 가족 사진첩',
+    title: '박서 오피스 — 우리 가족 사진첩',
     koreanTitle: '각자의 계절, 하나의 시간',
-    subtitle: '흩어진 가족들이 일 년 동안 함께 만든 사계절 포토북 아카이브',
+    subtitle: '온 가족이 함께 모으는 사계절 사진첩',
     paperTheme: 'ivory',
     layoutDensity: 'ten-per-page',
     includeMonthDividers: false,
+    publishedBooks: [],
+    printOrders: [],
   });
   const [cloudStatus, setCloudStatus] = useState({
     connected: false,
@@ -36,23 +48,38 @@ export default function App() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Active page tab: 'book' | 'timeline' | 'profile'
-  const [activeTab, setActiveTab] = useState('book');
+  // 진입 즉시 메인 피드가 노출되도록 기본 탭을 'home' (홈 메인 피드)으로 설정!
+  // 'home' | 'studio' | 'library' | 'profile'
+  const [activeTab, setActiveTab] = useState('home');
 
-  // Active logged-in family member profile (persisted in localStorage per device)
+  // 어르신 · 어린이 맞춤 큰 글씨 모드
+  const [largeTextMode, setLargeTextMode] = useState(
+    () => localStorage.getItem('fivestar_large_text') === 'true'
+  );
+
+  useEffect(() => {
+    if (largeTextMode) {
+      document.documentElement.classList.add('large-text-mode');
+    } else {
+      document.documentElement.classList.remove('large-text-mode');
+    }
+    localStorage.setItem('fivestar_large_text', String(largeTextMode));
+  }, [largeTextMode]);
+
+  // 현재 접속 중인 내 가족 프로필
   const [activeMemberId, setActiveMemberId] = useState(
     () => localStorage.getItem('fivestar_active_member') || 'member-first'
   );
 
-  // Timeline filters
+  // 홈(메인 피드) 필터 상태
   const [selectedSeason, setSelectedSeason] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedMemberFilter, setSelectedMemberFilter] = useState('all');
 
-  // Page layout variant overrides
+  // 페이지 레이아웃 모양 변환 상태
   const [pageVariants, setPageVariants] = useState({});
 
-  // Modals state
+  // 모달 상태
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
   const [familyModalState, setFamilyModalState] = useState({
@@ -75,7 +102,7 @@ export default function App() {
       const data = await res.json();
       setPhotos(data.photos || []);
       setMembers(data.members || []);
-      if (data.bookSettings) setBookSettings(data.bookSettings);
+      if (data.bookSettings) setBookSettings((prev) => ({ ...prev, ...data.bookSettings }));
       if (data.cloudStatus) setCloudStatus(data.cloudStatus);
     } catch (err) {
       console.error('Archive load error:', err);
@@ -97,7 +124,7 @@ export default function App() {
     }
   };
 
-  // Compile photobook pages automatically whenever photos, members, or bookSettings change
+  // 사진첩 페이지 자동 조판
   const compiledPages = useMemo(() => {
     return buildPhotobookPages(photos, members, bookSettings, pageVariants);
   }, [photos, members, bookSettings, pageVariants]);
@@ -112,20 +139,20 @@ export default function App() {
       ...prev,
       [pageId]: (prev[pageId] || 0) + 1,
     }));
-    showToast('해당 포토북 페이지의 화보 레이아웃 배치가 변경되었습니다.');
+    showToast('해당 쪽의 사진 배치 모양이 변경되었습니다.');
   };
 
-  // API Handlers
+  // 사진 업로드 성공 핸들러
   const handleUploadSuccess = (allPhotos, newPhotos) => {
     setPhotos(allPhotos);
     const months = [...new Set(newPhotos.map((p) => `${p.month}월`))].join(', ');
     showToast(
-      `새 사진 ${newPhotos.length}장이 촬영일(EXIF) 기준으로 ${months} 포토북 페이지에 자동 배치되었습니다!`
+      `새 사진 ${newPhotos.length}장이 가족 피드와 ${months} 사진첩에 등록되었습니다!`
     );
   };
 
+  // 사진 정보 또는 위치 업데이트 핸들러
   const handleUpdatePhoto = async (photoId, patch) => {
-    // Instant optimistic update for smooth frame dragging / positioning
     setPhotos((prev) =>
       prev.map((p) => (p.id === photoId ? { ...p, ...patch } : p))
     );
@@ -138,10 +165,50 @@ export default function App() {
       const data = await res.json();
       setPhotos(data.allPhotos);
       if (typeof patch.cropX === 'number') {
-        showToast('프레임 내 사진 위치·확대 설정이 저장되었습니다.');
+        showToast('사진 위치 및 크기 조절이 저장되었습니다.');
       } else {
-        showToast('사진 기록이 업데이트되어 포토북 레이아웃에 반영되었습니다.');
+        showToast('사진 내용이 수정되었습니다.');
       }
+    }
+  };
+
+  // 공감 반응 (사랑해요 / 최고예요 / 반가워요) 토글 핸들러
+  const handleToggleReaction = async (photoId, reactionType = 'heart') => {
+    const mId = activeMemberId || members[0]?.id || 'member-first';
+
+    // 낙관적 즉시 업데이트
+    setPhotos((prev) =>
+      prev.map((p) => {
+        if (p.id !== photoId) return p;
+        const currReactions = p.reactions || { heart: [], clap: [], smile: [] };
+        const currList = Array.isArray(currReactions[reactionType])
+          ? [...currReactions[reactionType]]
+          : [];
+        const idx = currList.indexOf(mId);
+        if (idx === -1) currList.push(mId);
+        else currList.splice(idx, 1);
+        return {
+          ...p,
+          reactions: {
+            ...currReactions,
+            [reactionType]: currList,
+          },
+        };
+      })
+    );
+
+    try {
+      const res = await fetch(`/api/photos/${photoId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: mId, type: reactionType }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.allPhotos) setPhotos(data.allPhotos);
+      }
+    } catch (err) {
+      console.error('Reaction error:', err);
     }
   };
 
@@ -150,7 +217,7 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setPhotos(data.allPhotos);
-      showToast('사진이 아카이브에서 삭제되었습니다.');
+      showToast('사진이 삭제되었습니다.');
     }
   };
 
@@ -163,7 +230,7 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setPhotos(data.allPhotos);
-      showToast('가족 코멘트가 등록되었습니다.');
+      showToast('가족 댓글이 등록되었습니다.');
     }
   };
 
@@ -190,6 +257,29 @@ export default function App() {
     }
   };
 
+  // 사진첩 스튜디오에서 시안 검수 후 '가족 서재'에 사진첩 완성 보관하기
+  const handlePublishBookToLibrary = async (newBook) => {
+    const existingBooks = Array.isArray(bookSettings.publishedBooks)
+      ? bookSettings.publishedBooks
+      : [
+          {
+            id: 'book-2026-annual',
+            title: '2026년 우리 가족 사계절 사진첩 (연간 종합본)',
+            subtitle: '온 가족이 일 년 동안 함께 모은 사계절 추억 기록집',
+            periodType: 'annual',
+            periodLabel: '연간 전체 (2026년 1월 ~ 12월)',
+            createdAt: '2026-11-01',
+            status: '제작 완료 · 열람 및 인쇄 가능',
+            bindingType: '고급 양장 하드커버',
+          },
+        ];
+
+    const updatedBooks = [newBook, ...existingBooks];
+    await handleUpdateBookSettings({ publishedBooks: updatedBooks });
+    showToast(`'${newBook.title}' 사진첩이 완성되어 [가족 서재]에 보관되었습니다!`);
+    setActiveTab('library');
+  };
+
   const syncSubtitleCities = (updatedMembers) => {
     const updatedCities = [...new Set(updatedMembers.map((m) => m.city).filter(Boolean))];
     if (
@@ -214,12 +304,11 @@ export default function App() {
       const data = await res.json();
       setMembers(data.members);
       syncSubtitleCities(data.members);
-      showToast(`새 가족 구성원 '${memberPayload.name}'님이 추가되었습니다.`);
+      showToast(`새 가족 '${memberPayload.name}'님이 추가되었습니다.`);
     }
   };
 
   const handleUpdateMember = async (memberId, patch) => {
-    // 1. Instant optimistic state update so UI reflects new name/city immediately
     const optimisticMembers = members.map((m) => {
       if (m.id !== memberId) return m;
       const nextName = patch.name ? patch.name.trim() : m.name;
@@ -231,7 +320,9 @@ export default function App() {
         name: nextName,
         city: nextCity,
         role: nextRole,
-        avatar: patch.avatar ? patch.avatar.trim().slice(0, 2) : nextName.slice(0, 1),
+        avatar: patch.avatar ? patch.avatar.trim().slice(0, 2) : nextName.slice(0, 2),
+        avatarImage:
+          typeof patch.avatarImage === 'string' ? patch.avatarImage : m.avatarImage,
         color: patch.color || m.color,
         badgeBg: patch.badgeBg || m.badgeBg,
       };
@@ -239,7 +330,6 @@ export default function App() {
     setMembers(optimisticMembers);
     syncSubtitleCities(optimisticMembers);
 
-    // 2. Persist via POST /api/members (with id) for 100% compatibility on both Local & Cloudflare KV
     try {
       const target = optimisticMembers.find((m) => m.id === memberId);
       const res = await fetch('/api/members', {
@@ -279,7 +369,6 @@ export default function App() {
   };
 
   const handleReorderMembers = async (reorderedMembers) => {
-    // 1. Optimistic update so the UI & connected cities order update immediately
     setMembers(reorderedMembers);
     syncSubtitleCities(reorderedMembers);
 
@@ -297,7 +386,7 @@ export default function App() {
           syncSubtitleCities(data.members);
         }
       }
-      showToast('가족 구성원 및 연결된 도시 순서가 변경·저장되었습니다.');
+      showToast('가족 명단 및 도시 순서가 저장되었습니다.');
     } catch (err) {
       console.error('Failed to reorder members:', err);
     }
@@ -328,325 +417,331 @@ export default function App() {
       if (data.bookSettings) setBookSettings(data.bookSettings);
       showToast(
         mode === 'empty'
-          ? '샘플 사진이 초기화되었습니다. 이제 우리 가족의 첫 사진을 올려보세요!'
-          : '2026 사계절 가족 샘플 아카이브가 복원되었습니다.'
+          ? '샘플 사진이 비워졌습니다. 이제 우리 가족의 첫 사진을 올려보세요!'
+          : '우리 가족 샘플 사진첩이 복원되었습니다.'
       );
     }
   };
 
   const activeMember =
     members.find((m) => m.id === activeMemberId) ||
-    members[0] || { id: 'member-first', name: '가족', city: '서울', color: '#141413' };
+    members[0] || { id: 'member-first', name: '가족', city: '부산', color: '#141413' };
 
   const uniqueCities = [...new Set(members.map((m) => m.city).filter(Boolean))];
-  const activeMonthsCount = new Set(photos.map((p) => p.month)).size;
+  const displayFamilyName =
+    bookSettings.familyTitle ||
+    (bookSettings.title && !bookSettings.title.includes('OUR YEAR')
+      ? bookSettings.title
+      : '박서 오피스 — 우리 가족 사진첩');
+
+  // 미니멀 기하학 라인 아이콘 (테라코타·웜토프 톤)
+  const renderMenuIcon = (id, isActive) => {
+    const strokeColor = isActive ? '#B64E2E' : '#A69B80';
+    switch (id) {
+      case 'home':
+        return (
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+            <rect
+              x="4"
+              y="4"
+              width="20"
+              height="20"
+              stroke={strokeColor}
+              strokeWidth={isActive ? '1.8' : '1.4'}
+            />
+            {[9, 14, 19].map((cx) =>
+              [9, 14, 19].map((cy) => (
+                <circle
+                  key={`${cx}-${cy}`}
+                  cx={cx}
+                  cy={cy}
+                  r="1.15"
+                  fill={strokeColor}
+                />
+              ))
+            )}
+          </svg>
+        );
+      case 'studio':
+        return (
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+            <rect
+              x="4"
+              y="4"
+              width="20"
+              height="20"
+              stroke={strokeColor}
+              strokeWidth={isActive ? '1.8' : '1.4'}
+            />
+            <line x1="12" y1="22" x2="22" y2="12" stroke={strokeColor} strokeWidth="1.4" />
+            <line x1="15.5" y1="22" x2="22" y2="15.5" stroke={strokeColor} strokeWidth="1.4" />
+            <line x1="19" y1="22" x2="22" y2="19" stroke={strokeColor} strokeWidth="1.4" />
+          </svg>
+        );
+      case 'library':
+        return (
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+            <path
+              d="M14 5L23 11L14 17L5 11L14 5Z"
+              stroke={strokeColor}
+              strokeWidth={isActive ? '1.8' : '1.4'}
+              strokeLinejoin="round"
+            />
+            <path
+              d="M5 16.5L14 22.5L23 16.5"
+              stroke={strokeColor}
+              strokeWidth={isActive ? '1.8' : '1.4'}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      case 'mypage':
+      default:
+        return (
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+            <circle
+              cx="14"
+              cy="14"
+              r="9"
+              stroke={strokeColor}
+              strokeWidth="1.3"
+              strokeDasharray="3.2 2.4"
+            />
+            <circle
+              cx="14"
+              cy="14"
+              r="5.5"
+              stroke={strokeColor}
+              strokeWidth={isActive ? '1.8' : '1.4'}
+            />
+          </svg>
+        );
+    }
+  };
+
+  const BOTTOM_MENUS = [
+    { id: 'home', label: '홈' },
+    { id: 'studio', label: '스튜디오' },
+    { id: 'library', label: '가족 서재' },
+    { id: 'mypage', label: '마이페이지' },
+  ];
+
+  const currentTabObj =
+    BOTTOM_MENUS.find((m) => m.id === activeTab) || BOTTOM_MENUS[0];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAF9F6] text-[#141413]">
-      {/* Toast Notification */}
+    <div className="min-h-screen bg-[#FBF8F3] text-[#5E3422] flex flex-col">
+      {/* 알림 토스트 */}
       {toastMsg && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#141413] text-[#FAF9F6] px-4 py-3 text-xs font-medium shadow-xl flex items-center gap-2 border border-white/15 no-print">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-[460px] z-50 bg-[#B64E2E] text-[#FBF8F3] px-5 py-3.5 rounded-full text-sm font-medium shadow-md flex items-center justify-between no-print">
           <span>{toastMsg}</span>
         </div>
       )}
 
-      {/* Main Web UI (Hidden during native book print) */}
-      <div className="no-print flex-1 flex flex-col">
-        {/* Top Utility & Cloud Status Bar */}
-        <div className="bg-[#141413] text-[#FAF9F6] px-4 sm:px-8 py-2 text-[11px] border-b border-white/10">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <span className="font-mono-meta text-[10px] tracking-[0.2em] uppercase text-[#C9C5BA]">
-                {bookSettings.volumeLabel || 'VOL. 01 — 2026 ANNUAL FAMILY ARCHIVE'}
-              </span>
-              <span className="hidden md:inline text-white/25">|</span>
+      {/* =====================================================================
+          반응형 웹앱 레이아웃 (re_ 감성 크림·테라코타·올리브오커 톤 · 테두리 최소화)
+      ====================================================================== */}
+      <div className="no-print w-full min-h-screen flex flex-col relative pb-28 md:pb-16">
+        {/* 상단 미니멀 유틸리티 & 네비게이션 바 */}
+        <header className="sticky top-0 z-40 bg-[#FBF8F3]/95 backdrop-blur-md">
+          <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-4 pb-3 flex items-center justify-between gap-4">
+            {/* 좌측: 데스크톱 메뉴 또는 홈 바로가기 */}
+            <div className="flex items-center gap-6">
               <button
                 type="button"
-                onClick={() => setActiveTab('profile')}
-                title="클릭하면 내 프로필 변경 / 가족 설정 페이지로 이동합니다"
-                className="inline-flex items-center gap-1.5 text-[11px] text-[#E6E4DD] hover:text-amber-300 transition-colors cursor-pointer"
+                onClick={() => {
+                  setActiveTab('home');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="text-sm sm:text-base font-medium text-[#8A442B] hover:text-[#B64E2E] cursor-pointer"
               >
-                <MapPin className="w-3 h-3 text-amber-400" />
-                <span>연결된 가족 도시: {uniqueCities.join(' · ') || '도시 설정하기'}</span>
-                <span className="px-1.5 py-0.2 bg-white/15 rounded-xs text-[10px] text-amber-300">
-                  도시·프로필 변경 →
-                </span>
+                우리 가족 기록장
               </button>
+
+              <nav
+                aria-label="웹 상단 메뉴"
+                className="hidden md:flex items-center gap-1.5"
+              >
+                {BOTTOM_MENUS.map((menu) => {
+                  const isActive = activeTab === menu.id;
+                  return (
+                    <button
+                      key={menu.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(menu.id);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                          : 'text-[#8A442B] hover:text-[#B64E2E] hover:bg-[#F2EDE3]'
+                      }`}
+                    >
+                      {menu.label}
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Cloud Sync Indicator */}
+            {/* 우측: 큰 글씨 & 사진 올리기 필 버튼 */}
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setFamilyModalState({ open: true, tab: 'cloud' })}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white/10 hover:bg-white/20 rounded-xs text-[10px] font-mono-meta transition-colors cursor-pointer"
+                onClick={() => setLargeTextMode((prev) => !prev)}
+                className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium border transition-colors cursor-pointer ${
+                  largeTextMode
+                    ? 'bg-[#7E7763] text-[#FBF8F3] border-[#7E7763]'
+                    : 'border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
+                }`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>
-                  {cloudStatus.mode === 'supabase'
-                    ? 'CLOUD SYNC: SUPABASE LIVE'
-                    : cloudStatus.mode === 'cloudflare-kv'
-                    ? 'CLOUD DB: CLOUDFLARE KV 영구 공유 활성'
-                    : 'SERVER DB: 동기화 활성'}
-                </span>
+                {largeTextMode ? '기본 글씨' : '큰 글씨'}
               </button>
 
-              {/* Invite Link Button */}
               <button
                 type="button"
-                onClick={() => setActiveTab('profile')}
-                className="inline-flex items-center gap-1 text-[11px] text-amber-300 hover:underline cursor-pointer"
+                onClick={() => setIsUploadOpen(true)}
+                className="px-4 py-1.5 sm:px-5 sm:py-2 bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] rounded-full text-xs sm:text-sm font-medium cursor-pointer"
               >
-                <Share2 className="w-3 h-3" />
-                <span>가족 초대코드: {bookSettings.familyCode || '2026FAM'}</span>
+                사진 올리기 +
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Editorial Masthead Header */}
-        <header className="border-b border-[#141413]/12 bg-[#FAF9F6]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-              {/* Brand Title & Subtitle */}
-              <div>
-                <div className="flex items-center gap-2 text-[11px] font-mono-meta uppercase tracking-[0.24em] text-[#8C5A3C]">
-                  <span>ANNUAL FAMILY PHOTOBOOK ARCHIVE</span>
-                  <span>·</span>
-                  <span>AUTO-LAYOUT BY EXIF DATE</span>
-                </div>
-                <h1
-                  onClick={() => setActiveTab('book')}
-                  className="mt-1 font-editorial-en text-3xl sm:text-5xl font-normal tracking-tight text-[#141413] uppercase cursor-pointer"
-                >
-                  {bookSettings.title || 'OUR YEAR, APART YET TOGETHER'}
-                </h1>
-                <p className="mt-1.5 font-editorial-ko text-sm sm:text-base text-[#4A4944]">
-                  {bookSettings.koreanTitle} — {bookSettings.subtitle}
-                </p>
-              </div>
-
-              {/* Right Controls: Active Member Switcher + Dedicated Profile Settings Page Button & Upload CTA */}
-              <div className="flex flex-wrap items-center gap-2.5">
-                {/* Who am I switcher */}
-                <div className="flex items-center bg-[#F3F1EC] border border-[#141413]/15 px-3 py-2 gap-2">
-                  <span className="text-[10px] font-mono-meta uppercase tracking-wider text-[#71706B]">
-                    내 프로필:
-                  </span>
-                  <select
-                    value={activeMember.id}
-                    onChange={(e) => handleSelectActiveMember(e.target.value)}
-                    className="bg-transparent text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
-                  >
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.city})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Dedicated Profile & City Settings Page Button */}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('profile')}
-                  className={`px-4 py-2.5 border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    activeTab === 'profile'
-                      ? 'bg-[#8C5A3C] text-white border-[#8C5A3C]'
-                      : 'bg-white text-[#141413] border-[#141413]/25 hover:border-[#141413]'
-                  }`}
-                >
-                  <UserCog className="w-3.5 h-3.5" />
-                  <span>내 프로필 변경 / 가족 설정</span>
-                </button>
-
-                {/* Primary Upload Photo CTA */}
-                <button
-                  type="button"
-                  onClick={() => setIsUploadOpen(true)}
-                  className="px-5 py-2.5 bg-[#141413] text-[#FAF9F6] hover:bg-[#2C2B29] text-xs font-medium tracking-wide flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>+ 추억 사진 올리기</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Navigation Bar & Live Book Compilation Summary */}
-            <div className="mt-7 pt-4 border-t border-[#141413]/12 flex flex-wrap items-center justify-between gap-4">
-              {/* Primary View Tabs (01 Photobook / 02 Timeline / 03 Profile & Family Settings) */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('book')}
-                  className={`px-4 py-2 text-xs font-medium flex items-center gap-2 border transition-all cursor-pointer ${
-                    activeTab === 'book'
-                      ? 'bg-[#141413] text-[#FAF9F6] border-[#141413]'
-                      : 'bg-white text-[#5A5852] border-[#141413]/15 hover:text-[#141413]'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>01. 포토북 펼침뷰 & PDF 스튜디오</span>
-                  <span
-                    className={`px-1.5 py-0.2 text-[10px] font-mono-meta rounded-xs ${
-                      activeTab === 'book'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-[#F3F1EC] text-[#141413]'
-                    }`}
-                  >
-                    {compiledPages.length}P
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('timeline')}
-                  className={`px-4 py-2 text-xs font-medium flex items-center gap-2 border transition-all cursor-pointer ${
-                    activeTab === 'timeline'
-                      ? 'bg-[#141413] text-[#FAF9F6] border-[#141413]'
-                      : 'bg-white text-[#5A5852] border-[#141413]/15 hover:text-[#141413]'
-                  }`}
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>02. 날짜·계절별 타임라인 아카이브</span>
-                  <span
-                    className={`px-1.5 py-0.2 text-[10px] font-mono-meta rounded-xs ${
-                      activeTab === 'timeline'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-[#F3F1EC] text-[#141413]'
-                    }`}
-                  >
-                    {photos.length}장
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('profile')}
-                  className={`px-4 py-2 text-xs font-medium flex items-center gap-2 border transition-all cursor-pointer ${
-                    activeTab === 'profile'
-                      ? 'bg-[#141413] text-[#FAF9F6] border-[#141413]'
-                      : 'bg-white text-[#5A5852] border-[#141413]/15 hover:text-[#141413]'
-                  }`}
-                >
-                  <UserCog className="w-3.5 h-3.5" />
-                  <span>03. 내 프로필 변경 / 가족 설정</span>
-                  <span
-                    className={`px-1.5 py-0.2 text-[10px] font-mono-meta rounded-xs ${
-                      activeTab === 'profile'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-[#F3F1EC] text-[#8C5A3C]'
-                    }`}
-                  >
-                    {activeMember.name} · {activeMember.city}
-                  </span>
-                </button>
-              </div>
-
-              {/* Archive Summary Metrics */}
-              <div className="flex items-center gap-4 text-xs text-[#5A5852] font-mono-meta">
-                <span>
-                  기록된 달: <strong className="text-[#141413]">{activeMonthsCount}/12개월</strong>
-                </span>
-                <span>·</span>
-                <span>
-                  누적 사진: <strong className="text-[#141413]">{photos.length}장</strong>
-                </span>
-                <span>·</span>
-                <span>
-                  자동 편집된 책 분량:{' '}
-                  <strong className="text-[#8C5A3C]">{compiledPages.length}페이지</strong>
-                </span>
-              </div>
-            </div>
+          {/* 에디토리얼 타이틀 행 (re_ / Pasta 감성) */}
+          <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-2 pb-5 flex flex-wrap items-baseline gap-x-4 sm:gap-x-8 gap-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('home');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-left cursor-pointer"
+            >
+              <h1 className="font-editorial-ko text-2xl sm:text-4xl font-normal tracking-tight text-[#B64E2E]">
+                {displayFamilyName}
+              </h1>
+            </button>
+            <span className="text-xl sm:text-3xl font-light text-[#CD6E50] tracking-tight">
+              / {currentTabObj.label}
+            </span>
           </div>
         </header>
 
-        {/* Main Workspace Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8">
+        {/* 메인 반응형 콘텐츠 컨테이너 */}
+        <main className="flex-1 w-full max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-2">
           {loading ? (
-            <div className="py-24 text-center font-editorial-ko text-sm text-[#71706B]">
-              가족들의 사계절 포토북 아카이브를 불러오는 중입니다...
+            <div className="py-24 text-center text-base text-[#8A442B]">
+              사진첩을 불러오는 중입니다...
             </div>
-          ) : activeTab === 'book' ? (
-            <PhotobookStudioView
-              pages={compiledPages}
-              members={members}
-              bookSettings={bookSettings}
-              onUpdateBookSettings={handleUpdateBookSettings}
-              onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
-              onCycleVariant={handleCyclePageVariant}
-              onUpdatePhotoPosition={handleUpdatePhoto}
-            />
-          ) : activeTab === 'timeline' ? (
-            <TimelineArchiveView
+          ) : activeTab === 'home' ? (
+            <HomeFeedView
               photos={photos}
               members={members}
+              activeMemberId={activeMember.id}
+              selectedMemberId={selectedMemberFilter}
+              onSelectMemberId={setSelectedMemberFilter}
               selectedSeason={selectedSeason}
               onSelectSeason={setSelectedSeason}
               selectedMonth={selectedMonth}
               onSelectMonth={setSelectedMonth}
-              selectedMemberId={selectedMemberFilter}
-              onSelectMemberId={setSelectedMemberFilter}
               onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
               onToggleFavorite={(photo) =>
                 handleUpdatePhoto(photo.id, { isFavorite: !photo.isFavorite })
               }
+              onToggleReaction={handleToggleReaction}
+              onAddComment={handleAddComment}
+              onDeleteComment={handleDeleteComment}
+              onUpdatePhoto={handleUpdatePhoto}
               onUpdatePhotoPosition={handleUpdatePhoto}
-              onOpenUpload={() => setIsUploadOpen(true)}
-              onSwitchToBookView={() => setActiveTab('book')}
+              onAddMember={handleAddMember}
+              onUploadSuccess={handleUploadSuccess}
+              onOpenUploadModal={() => setIsUploadOpen(true)}
+              onSwitchToStudio={() => setActiveTab('studio')}
+              onSwitchToProfile={() => setActiveTab('mypage')}
+            />
+          ) : activeTab === 'studio' ? (
+            <PhotobookStudioView
+              photos={photos}
+              pages={compiledPages}
+              members={members}
+              activeMemberId={activeMember.id}
+              bookSettings={bookSettings}
+              pageVariants={pageVariants}
+              onUpdateBookSettings={handleUpdateBookSettings}
+              onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
+              onCycleVariant={handleCyclePageVariant}
+              onUpdatePhotoPosition={handleUpdatePhoto}
+              onPublishBookToLibrary={handlePublishBookToLibrary}
+              onSwitchToLibrary={() => setActiveTab('library')}
+            />
+          ) : activeTab === 'library' ? (
+            <FamilyLibraryView
+              photos={photos}
+              members={members}
+              activeMemberId={activeMember.id}
+              bookSettings={bookSettings}
+              onUpdateBookSettings={handleUpdateBookSettings}
+              onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
+              onSwitchToStudio={() => setActiveTab('studio')}
+              showToast={showToast}
             />
           ) : (
-            <ProfileFamilySettingsPage
+            <MyPageView
               members={members}
               photos={photos}
               activeMemberId={activeMember.id}
               bookSettings={bookSettings}
-              cloudStatus={cloudStatus}
               onSelectActiveMember={handleSelectActiveMember}
               onUpdateMember={handleUpdateMember}
               onReorderMembers={handleReorderMembers}
               onAddMember={handleAddMember}
               onDeleteMember={handleDeleteMember}
               onUpdateBookSettings={handleUpdateBookSettings}
-              onResetArchive={handleResetArchive}
-              onSwitchToBookView={() => setActiveTab('book')}
+              onSwitchToLibrary={() => setActiveTab('library')}
+              showToast={showToast}
             />
           )}
         </main>
 
-        {/* Footer */}
-        <footer className="border-t border-[#141413]/12 bg-[#F3F1EC] py-6 px-4 sm:px-8 text-xs text-[#71706B]">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="font-editorial-en font-semibold text-sm text-[#141413]">
-                OUR YEAR ARCHIVE
-              </span>
-              <span>— 흩어진 가족들이 일 년의 사진을 모아 한 권의 책으로 엮는 사계절 화보집</span>
-            </div>
-            <div className="flex items-center gap-4 font-mono-meta text-[11px]">
+        {/* ===================================================================
+            모바일 전용 하단 고정 메뉴바 (웜 크림 배경 + 테라코타/토프 심볼)
+        =================================================================== */}
+        <nav
+          aria-label="하단 메뉴"
+          className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#FBF8F3]/95 backdrop-blur-md border-t border-[#E6DEC8] px-2 pt-3 pb-4 grid grid-cols-4"
+        >
+          {BOTTOM_MENUS.map((menu) => {
+            const isActive = activeTab === menu.id;
+            return (
               <button
+                key={menu.id}
                 type="button"
-                onClick={() => setActiveTab('profile')}
-                className="hover:text-[#141413] underline underline-offset-4 cursor-pointer"
+                onClick={() => {
+                  setActiveTab(menu.id);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="flex flex-col items-center justify-center gap-1.5 cursor-pointer select-none"
               >
-                내 프로필 변경 / 가족·도시 설정
+                {renderMenuIcon(menu.id, isActive)}
+                <span
+                  className={`text-xs tracking-wide leading-none ${
+                    isActive
+                      ? 'text-[#B64E2E] font-bold'
+                      : 'text-[#A69B80] font-normal'
+                  }`}
+                >
+                  {menu.label}
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => setFamilyModalState({ open: true, tab: 'cloud' })}
-                className="hover:text-[#141413] underline underline-offset-4 cursor-pointer"
-              >
-                클라우드 DB 상태 확인
-              </button>
-              <span>FIVESTAR FAMILY EDITION</span>
-            </div>
-          </div>
-        </footer>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* Native High-DPI Print Book Layout (Visible ONLY when printing / saving PDF via browser print) */}
+      {/* 브라우저 인쇄용 고해상도 북 레이아웃 */}
       <div className="hidden print-only-book">
         {compiledPages.map((pg) => (
           <div key={`print-${pg.id}`} className="print-page-sheet">
@@ -661,7 +756,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* Modals */}
+      {/* 모달 창 */}
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
