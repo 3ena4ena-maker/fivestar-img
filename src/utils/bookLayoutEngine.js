@@ -401,20 +401,42 @@ export function buildPhotobookPages(photos = [], members = [], bookSettings = {}
   const pages = [];
   const periodType = bookSettings.periodType || 'annual';
 
+  // 전체 업로드된 가족 사진 풀 (기간 필터 외에 올린 사진도 표지로 선택 가능하도록 지원)
+  const allUploadedPool = Array.isArray(bookSettings.allUploadedPhotos) && bookSettings.allUploadedPhotos.length > 0
+    ? bookSettings.allUploadedPhotos
+    : sorted;
+
   // 베스트 단체컷 / 대표 표지 사진 선정
   const bestGroupPhoto =
-    sorted.find((p) => p.id === bookSettings.bestGroupPhotoId) ||
-    sorted.find((p) => p.url === bookSettings.coverPhotoUrl) ||
+    allUploadedPool.find((p) => p.id === bookSettings.bestGroupPhotoId) ||
+    allUploadedPool.find((p) => p.url === bookSettings.coverPhotoUrl) ||
     sorted.find((p) => p.isFavorite && p.orientation === 'landscape') ||
     sorted[0] ||
+    allUploadedPool[0] ||
     null;
 
-  // 멀티 콜라주 및 3단 스트립 표지용 대표 사진 배열 (대표 사진 우선 + 즐겨찾기/시간순 최대 9장)
+  // 멀티 콜라주 및 3단 스트립 표지용 대표 사진 배열 (사용자가 선택한 표지 사진 순서 우선 + 대표 사진 + 시간순 최대 9장)
   const coverPhotos = (() => {
-    if (!sorted.length) return [];
-    const rest = sorted.filter((p) => !bestGroupPhoto || p.id !== bestGroupPhoto.id);
-    const combined = bestGroupPhoto ? [bestGroupPhoto, ...rest] : [...rest];
-    return combined.slice(0, 9);
+    const selectedIds = Array.isArray(bookSettings.coverPhotoIds)
+      ? bookSettings.coverPhotoIds
+      : [];
+    const selectedObjs = selectedIds
+      .map((id) => allUploadedPool.find((p) => p.id === id))
+      .filter(Boolean);
+    const sourceList = sorted.length > 0 ? sorted : allUploadedPool;
+    if (!sourceList.length && !selectedObjs.length) return [];
+    const rest = sourceList.filter(
+      (p) =>
+        !selectedObjs.some((s) => s.id === p.id) &&
+        (!bestGroupPhoto || p.id !== bestGroupPhoto.id)
+    );
+    const base =
+      selectedObjs.length > 0
+        ? selectedObjs
+        : bestGroupPhoto
+        ? [bestGroupPhoto]
+        : [];
+    return [...base, ...rest].slice(0, 9);
   })();
 
   // 1. Front Cover Page

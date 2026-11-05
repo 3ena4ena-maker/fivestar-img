@@ -8,6 +8,7 @@ import {
   Edit3,
   ArrowUp,
   ArrowDown,
+  Lock,
 } from 'lucide-react';
 
 const COLOR_PRESETS = [
@@ -48,6 +49,7 @@ export default function MyPageView({
   photos = [],
   activeMemberId,
   bookSettings = {},
+  onSelectActiveMember,
   onUpdateMember,
   onReorderMembers,
   onAddMember,
@@ -207,12 +209,27 @@ export default function MyPageView({
     }
   };
 
+  const [savedCodeBanner, setSavedCodeBanner] = useState(false);
+
+  const handleSaveFamilyCode = async (e) => {
+    e.preventDefault();
+    const cleanCode = familyCodeInput.trim() || '2026FAM';
+    setFamilyCodeInput(cleanCode);
+    await onUpdateBookSettings({
+      familyCode: cleanCode,
+    });
+    setSavedCodeBanner(true);
+    setTimeout(() => setSavedCodeBanner(false), 3000);
+    if (showToast) {
+      showToast(`페이지 잠금 비밀번호가 '${cleanCode}'(으)로 변경되었습니다.`);
+    }
+  };
+
   const handleCopyInvite = () => {
     const shareUrl = window.location.origin;
     const titleName = bookSettings.familyTitle || '박서 오피스 — 우리 가족 사진첩';
-    const message = `[${titleName}]\n우리 가족 전용 온라인 사진첩입니다.\n아래 링크로 들어오셔서 일상 사진을 편하게 올려주세요.\n\n• 바로 접속하기: ${shareUrl}\n• 가족 초대 코드: ${
-      bookSettings.familyCode || '2026FAM'
-    }`;
+    const currentCode = bookSettings.familyCode || '2026FAM';
+    const message = `[${titleName}]\n우리 가족 전용 비공개 사진첩입니다.\n아래 링크로 들어오신 뒤 잠금 비밀번호를 입력하시면 사진을 보고 올릴 수 있습니다.\n\n• 바로 접속하기: ${shareUrl}\n• 페이지 잠금 비밀번호(초대 코드): ${currentCode}`;
     navigator.clipboard.writeText(message);
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 3000);
@@ -561,40 +578,79 @@ export default function MyPageView({
             우측 컬럼: 가족 초대하기 + 가족 구성원 명단 + 정기 구독 관리 + 제작·배송 내역
         =================================================================== */}
         <div className="lg:col-span-7 space-y-6">
-          {/* 3. 가족 초대하기 */}
-          <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-[#B64E2E]">가족 초대하기</h3>
-                <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
-                  대표 1인 구독으로 온 가족 인원 제한 없이 참여할 수 있습니다.
-                </p>
+          {/* 3. 가족 초대하기 & 페이지 잠금 비밀번호 설정 (대표 가족에게만 노출) */}
+          {isRepresentative && (
+            <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-[#B64E2E] flex items-center gap-1.5">
+                    <Lock className="w-4 h-4" />
+                    <span>가족 초대하기 · 페이지 잠금 설정</span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
+                    잠금 비밀번호를 아는 우리 가족만 사진을 보고 올릴 수 있습니다.
+                  </p>
+                </div>
+                <span className="px-3.5 py-1.5 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm font-mono font-bold text-[#8A442B] shrink-0">
+                  {bookSettings.familyCode || '2026FAM'}
+                </span>
               </div>
-              <span className="px-3.5 py-1.5 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm font-mono font-bold text-[#8A442B]">
-                {bookSettings.familyCode || '2026FAM'}
-              </span>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleCopyInvite}
-              className="w-full py-3.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {copiedInvite ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>초대 문구가 복사되었습니다</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>초대장 문구 · 링크 복사하기</span>
-                </>
+              {savedCodeBanner && (
+                <div className="p-3.5 bg-[#FBF8F3] rounded-2xl text-[#B64E2E] text-sm font-bold flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0" />
+                  <span>페이지 잠금 비밀번호가 저장되었습니다.</span>
+                </div>
               )}
-            </button>
-          </section>
 
-          {/* 4. 가족 구성원 명단 (수정·삭제·추가 후 [구성원 명단 저장하기] 버튼을 눌러야 저장됨) */}
+              <form
+                onSubmit={handleSaveFamilyCode}
+                className="bg-[#FBF8F3] rounded-2xl p-3.5 sm:p-4 space-y-2.5"
+              >
+                <label className="block text-xs sm:text-sm font-bold text-[#8A442B]">
+                  우리 가족 전용 잠금 비밀번호 (초대 코드)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={familyCodeInput}
+                    onChange={(e) => setFamilyCodeInput(e.target.value)}
+                    placeholder="예: 2026FAM 또는 우리가족비밀번호"
+                    className="flex-1 bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm sm:text-base font-bold text-[#5E3422] focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-[#8A442B] hover:bg-[#5E3422] text-[#FBF8F3] rounded-xl text-xs sm:text-sm font-bold shrink-0 cursor-pointer"
+                  >
+                    비밀번호 저장
+                  </button>
+                </div>
+                <p className="text-xs text-[#A69B80]">
+                  비밀번호를 바꾸면 다른 기기에서는 새 비밀번호를 입력해야 사진첩이 열립니다.
+                </p>
+              </form>
+
+              <button
+                type="button"
+                onClick={handleCopyInvite}
+                className="w-full py-3.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {copiedInvite ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>초대 문구와 잠금 비밀번호가 복사되었습니다</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>초대장 링크 · 잠금 비밀번호 복사하기</span>
+                  </>
+                )}
+              </button>
+            </section>
+          )}
+
+          {/* 4. 가족 구성원 명단 (대표 가족만 추가·수정·삭제 가능 / 일반 가족은 열람 전용) */}
           <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -602,10 +658,12 @@ export default function MyPageView({
                   가족 구성원 명단 ({draftMembers.length}명)
                 </h3>
                 <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
-                  구성원 추가·수정·삭제 후 아래 [구성원 명단 저장하기] 버튼을 눌러야 반영됩니다.
+                  {isRepresentative
+                    ? '구성원 추가·수정·삭제 후 아래 [구성원 명단 저장하기] 버튼을 눌러야 반영됩니다.'
+                    : '우리 가족 사진첩에 함께 참여하고 있는 가족 명단입니다.'}
                 </p>
               </div>
-              {isMembersDirty && (
+              {isRepresentative && isMembersDirty && (
                 <span className="px-3 py-1 rounded-full bg-[#B64E2E]/15 text-[#B64E2E] text-xs font-bold">
                   저장 전 변경사항 있음
                 </span>
@@ -621,7 +679,7 @@ export default function MyPageView({
 
             <div className="space-y-2">
               {draftMembers.map((m, index) => {
-                const isEditing = editingMemberId === m.id;
+                const isEditing = isRepresentative && editingMemberId === m.id;
                 const photoCount = photos.filter((p) => p.memberId === m.id).length;
 
                 return (
@@ -709,44 +767,46 @@ export default function MyPageView({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            disabled={index === 0}
-                            onClick={() => handleMoveByOffset(index, -1)}
-                            className="p-2 text-[#8A442B] hover:text-[#B64E2E] disabled:opacity-25 cursor-pointer"
-                            title="위로"
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={index === draftMembers.length - 1}
-                            onClick={() => handleMoveByOffset(index, 1)}
-                            className="p-2 text-[#8A442B] hover:text-[#B64E2E] disabled:opacity-25 cursor-pointer"
-                            title="아래로"
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => startRowEdit(m)}
-                            className="p-2 text-[#8A442B] hover:text-[#B64E2E] cursor-pointer"
-                            title="수정"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          {draftMembers.length > 1 && (
+                        {isRepresentative && (
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
-                              onClick={(e) => handleRemoveDraftMember(e, m.id)}
-                              className="p-2 text-[#A69B80] hover:text-[#B64E2E] cursor-pointer"
-                              title="명단에서 제외 (저장 시 최종 반영)"
+                              disabled={index === 0}
+                              onClick={() => handleMoveByOffset(index, -1)}
+                              className="p-2 text-[#8A442B] hover:text-[#B64E2E] disabled:opacity-25 cursor-pointer"
+                              title="위로"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <ArrowUp className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
+                            <button
+                              type="button"
+                              disabled={index === draftMembers.length - 1}
+                              onClick={() => handleMoveByOffset(index, 1)}
+                              className="p-2 text-[#8A442B] hover:text-[#B64E2E] disabled:opacity-25 cursor-pointer"
+                              title="아래로"
+                            >
+                              <ArrowDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => startRowEdit(m)}
+                              className="p-2 text-[#8A442B] hover:text-[#B64E2E] cursor-pointer"
+                              title="수정"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            {draftMembers.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleRemoveDraftMember(e, m.id)}
+                                className="p-2 text-[#A69B80] hover:text-[#B64E2E] cursor-pointer"
+                                title="명단에서 제외 (저장 시 최종 반영)"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -754,62 +814,66 @@ export default function MyPageView({
               })}
             </div>
 
-            {/* 새 가족 구성원 추가 (목록에 추가) */}
-            <form
-              onSubmit={handleAddMemberSubmit}
-              className="bg-[#FBF8F3] rounded-2xl p-4 space-y-3"
-            >
-              <span className="block text-sm font-bold text-[#8A442B]">
-                새 가족 프로필 추가
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="이름/호칭 (예: 손주 하준)"
-                  className="bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm text-[#5E3422] focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={newCity}
-                  onChange={(e) => setNewCity(e.target.value)}
-                  placeholder="거주 도시 (예: 서울)"
-                  className="bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm text-[#5E3422] focus:outline-none"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full py-2.5 border border-[#B64E2E]/50 hover:bg-[#F2EDE3] text-[#8A442B] rounded-full text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>명단 목록에 추가 +</span>
-              </button>
-            </form>
-
-            {/* 최종 구성원 명단 저장하기 버튼 */}
-            <div className="flex items-center gap-2 pt-1">
-              {isMembersDirty && (
-                <button
-                  type="button"
-                  onClick={handleCancelMembersChanges}
-                  className="px-5 py-3.5 rounded-full border border-[#B64E2E]/45 text-[#8A442B] hover:bg-[#FBF8F3] text-sm font-bold cursor-pointer shrink-0"
+            {isRepresentative && (
+              <>
+                {/* 새 가족 구성원 추가 (목록에 추가) */}
+                <form
+                  onSubmit={handleAddMemberSubmit}
+                  className="bg-[#FBF8F3] rounded-2xl p-4 space-y-3"
                 >
-                  되돌리기
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={isSavingMembers}
-                onClick={handleCommitMembersSave}
-                className="flex-1 py-3.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Check className="w-4 h-4" />
-                <span>
-                  {isSavingMembers ? '저장 중...' : '구성원 명단 저장하기'}
-                </span>
-              </button>
-            </div>
+                  <span className="block text-sm font-bold text-[#8A442B]">
+                    새 가족 프로필 추가
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <input
+                      type="text"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="이름/호칭 (예: 손주 하준)"
+                      className="bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm text-[#5E3422] focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={newCity}
+                      onChange={(e) => setNewCity(e.target.value)}
+                      placeholder="거주 도시 (예: 서울)"
+                      className="bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm text-[#5E3422] focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 border border-[#B64E2E]/50 hover:bg-[#F2EDE3] text-[#8A442B] rounded-full text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>명단 목록에 추가 +</span>
+                  </button>
+                </form>
+
+                {/* 최종 구성원 명단 저장하기 버튼 */}
+                <div className="flex items-center gap-2 pt-1">
+                  {isMembersDirty && (
+                    <button
+                      type="button"
+                      onClick={handleCancelMembersChanges}
+                      className="px-5 py-3.5 rounded-full border border-[#B64E2E]/45 text-[#8A442B] hover:bg-[#FBF8F3] text-sm font-bold cursor-pointer shrink-0"
+                    >
+                      되돌리기
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isSavingMembers}
+                    onClick={handleCommitMembersSave}
+                    className="flex-1 py-3.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>
+                      {isSavingMembers ? '저장 중...' : '구성원 명단 저장하기'}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>

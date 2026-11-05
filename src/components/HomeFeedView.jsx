@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Loader2,
   X,
+  Trash2,
 } from 'lucide-react';
 import {
   extractPhotoMetadata,
@@ -16,14 +17,20 @@ export default function HomeFeedView({
   photos = [],
   members = [],
   activeMemberId,
+  bookSettings = {},
   selectedMemberId = 'all',
   onSelectMemberId,
   selectedSeason = 'all',
   selectedMonth = 'all',
   onSelectPhoto,
+  onDeletePhoto,
   onUpdatePhotoPosition,
   onUploadSuccess,
 }) {
+  const payerMemberId = bookSettings.payerMemberId || 'member-first';
+  const isRepresentative = activeMemberId === payerMemberId;
+  const canDeletePhoto = (photo) =>
+    Boolean(onDeletePhoto) && (isRepresentative || photo?.memberId === activeMemberId);
   // 기본 보기 방식: 'grid' (사진 모아보기)
   const [displayMode, setDisplayMode] = useState('grid');
   const [sortOrder] = useState('newest');
@@ -413,7 +420,7 @@ export default function HomeFeedView({
                   <div className="text-xs sm:text-sm text-[#B64E2E]">
                     {formatKoreanDate(photo.takenAt)}
                   </div>
-                  <div className="pt-1 flex flex-wrap gap-1.5">
+                  <div className="pt-1 flex flex-wrap items-center gap-1.5">
                     <span className="px-2.5 py-0.5 rounded-full border border-[#B64E2E]/40 text-[#8A442B] text-[11px] sm:text-xs">
                       {author.name}
                     </span>
@@ -421,6 +428,22 @@ export default function HomeFeedView({
                       <span className="px-2.5 py-0.5 rounded-full border border-[#B64E2E]/40 text-[#8A442B] text-[11px] sm:text-xs">
                         {author.city}
                       </span>
+                    )}
+                    {canDeletePhoto(photo) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('이 사진을 삭제할까요?')) {
+                            onDeletePhoto(photo.id);
+                          }
+                        }}
+                        className="ml-auto px-2.5 py-0.5 rounded-full border border-[#B64E2E]/45 text-[#B64E2E] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-[11px] sm:text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="사진 삭제"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>삭제</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -521,13 +544,29 @@ export default function HomeFeedView({
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onSelectPhoto && onSelectPhoto(activePhoto)}
-                      className="px-3.5 py-1 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm text-[#8A442B] hover:border-[#B64E2E] cursor-pointer"
-                    >
-                      크게 보기 +
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {canDeletePhoto(activePhoto) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('이 사진을 삭제할까요?')) {
+                              onDeletePhoto(activePhoto.id);
+                            }
+                          }}
+                          className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm text-[#B64E2E] hover:bg-[#B64E2E] hover:text-[#FBF8F3] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>삭제</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onSelectPhoto && onSelectPhoto(activePhoto)}
+                        className="px-3.5 py-1 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm text-[#8A442B] hover:border-[#B64E2E] cursor-pointer"
+                      >
+                        크게 보기 +
+                      </button>
+                    </div>
                   </div>
 
                   {activePhoto.caption && (

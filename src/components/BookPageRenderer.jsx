@@ -910,7 +910,11 @@ function BookPageCanvas({
     // [스타일 7] 멀티 콜라주형 (Multi-Photo Collage Cover — 3x3 또는 2x2 정방형 그리드)
     // =========================================================================
     if (coverLayout === 'multi-collage') {
-      const useNineGrid = orderedPhotoObjects.length >= 6;
+      const selectedCount = Array.isArray(bookSettings.coverPhotoIds)
+        ? bookSettings.coverPhotoIds.length
+        : 0;
+      const useNineGrid =
+        selectedCount > 4 || (selectedCount === 0 && orderedPhotoObjects.length >= 6);
       const cellCount = useNineGrid ? 9 : 4;
       const collagePhotos = getCollagePhotos(cellCount);
 

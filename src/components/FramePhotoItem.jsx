@@ -58,9 +58,10 @@ export default function FramePhotoItem({
 
   const latestPosRef = useRef(pos);
   const dragStartRef = useRef(null);
+  const pinchStartRef = useRef(null);
 
   useEffect(() => {
-    if (!dragging) {
+    if (!dragging && !pinchStartRef.current) {
       const synced = {
         cropX: typeof photo?.cropX === 'number' ? photo.cropX : 50,
         cropY: typeof photo?.cropY === 'number' ? photo.cropY : 50,
@@ -86,8 +87,82 @@ export default function FramePhotoItem({
     }
   };
 
+  // 모바일 두 손가락 핀치(늘렸다 줄였다) 확대·축소 지원
+  const handleTouchStart = (e) => {
+    if (isPrint || !activeEdit) return;
+    if (e.touches && e.touches.length === 2) {
+      e.stopPropagation();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.max(20, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      const rect = containerRef.current?.getBoundingClientRect();
+      dragStartRef.current = null;
+      setDragging(true);
+      pinchStartRef.current = {
+        startDist: dist,
+        startMidX: midX,
+        startMidY: midY,
+        width: Math.max(80, rect?.width || 240),
+        height: Math.max(80, rect?.height || 240),
+        startX: latestPosRef.current.cropX,
+        startY: latestPosRef.current.cropY,
+        startZoom: latestPosRef.current.cropZoom,
+      };
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!activeEdit || !pinchStartRef.current) return;
+    if (e.touches && e.touches.length === 2) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const curDist = Math.max(20, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+      const curMidX = (t1.clientX + t2.clientX) / 2;
+      const curMidY = (t1.clientY + t2.clientY) / 2;
+
+      const {
+        startDist,
+        startMidX,
+        startMidY,
+        width,
+        height,
+        startX,
+        startY,
+        startZoom,
+      } = pinchStartRef.current;
+
+      const ratio = curDist / startDist;
+      const nextZoom = clamp(Number((startZoom * ratio).toFixed(2)), 0.4, 3.0);
+      const dx = curMidX - startMidX;
+      const dy = curMidY - startMidY;
+      const nextX = clamp(startX - (dx / width) * 100, 0, 100);
+      const nextY = clamp(startY - (dy / height) * 100, 0, 100);
+
+      const updated = {
+        cropX: nextX,
+        cropY: nextY,
+        cropZoom: nextZoom,
+      };
+      latestPosRef.current = updated;
+      setPos(updated);
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!pinchStartRef.current) return;
+    if (!e.touches || e.touches.length < 2) {
+      pinchStartRef.current = null;
+      setDragging(false);
+      savePosition(latestPosRef.current);
+    }
+  };
+
   const handlePointerDown = (e) => {
-    if (isPrint) return;
+    if (isPrint || pinchStartRef.current) return;
     if (e.target.closest('[data-crop-control="true"]')) return;
 
     const resizeHandle = e.target.closest('[data-resize-handle="true"]');
@@ -131,7 +206,7 @@ export default function FramePhotoItem({
   };
 
   const handlePointerMove = (e) => {
-    if (!dragging || !dragStartRef.current) return;
+    if (!dragging || !dragStartRef.current || pinchStartRef.current) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -179,7 +254,7 @@ export default function FramePhotoItem({
   };
 
   const handlePointerUp = (e) => {
-    if (!dragging) return;
+    if (!dragging || pinchStartRef.current) return;
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
@@ -251,6 +326,10 @@ export default function FramePhotoItem({
         }
         if (onSelectPhoto) onSelectPhoto(photo);
       }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

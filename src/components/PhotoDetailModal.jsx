@@ -25,20 +25,31 @@ export default function PhotoDetailModal({
   const [location, setLocation] = useState('');
   const [caption, setCaption] = useState('');
   const [memberId, setMemberId] = useState('');
+  const [draftCropX, setDraftCropX] = useState(50);
+  const [draftCropY, setDraftCropY] = useState(50);
+  const [draftCropZoom, setDraftCropZoom] = useState(1);
   const [commentText, setCommentText] = useState('');
   const [commentAuthorId, setCommentAuthorId] = useState(activeMemberId || members[0]?.id);
   const [saving, setSaving] = useState(false);
 
+  const resetDraftFromPhoto = (p) => {
+    if (!p) return;
+    setDateStr(p.dateStr || p.takenAt?.slice(0, 10) || '');
+    setLocation(p.location || '');
+    setCaption(p.caption || '');
+    setMemberId(p.memberId || members[0]?.id || '');
+    setDraftCropX(typeof p.cropX === 'number' ? p.cropX : 50);
+    setDraftCropY(typeof p.cropY === 'number' ? p.cropY : 50);
+    setDraftCropZoom(typeof p.cropZoom === 'number' ? p.cropZoom : 1);
+  };
+
   useEffect(() => {
     if (photo) {
-      setDateStr(photo.dateStr || photo.takenAt?.slice(0, 10) || '');
-      setLocation(photo.location || '');
-      setCaption(photo.caption || '');
-      setMemberId(photo.memberId || members[0]?.id || '');
+      resetDraftFromPhoto(photo);
       setCommentAuthorId(activeMemberId || members[0]?.id);
       setIsEditing(false);
     }
-  }, [photo, activeMemberId, members]);
+  }, [photo?.id, activeMemberId]);
 
   if (!photo) return null;
 
@@ -50,6 +61,21 @@ export default function PhotoDetailModal({
   };
 
   const isCurrentCover = bookSettings.coverPhotoUrl === photo.url;
+  const payerMemberId = bookSettings.payerMemberId || 'member-first';
+  const isRepresentative = activeMemberId === payerMemberId;
+  const isOwnPhoto = photo.memberId === activeMemberId;
+  const canManagePhoto = isRepresentative || isOwnPhoto;
+
+  const handleDraftPositionChange = (_id, patch) => {
+    if (typeof patch.cropX === 'number') setDraftCropX(patch.cropX);
+    if (typeof patch.cropY === 'number') setDraftCropY(patch.cropY);
+    if (typeof patch.cropZoom === 'number') setDraftCropZoom(patch.cropZoom);
+  };
+
+  const handleCancelEdits = () => {
+    resetDraftFromPhoto(photo);
+    setIsEditing(false);
+  };
 
   const handleSaveEdits = async () => {
     setSaving(true);
@@ -59,6 +85,9 @@ export default function PhotoDetailModal({
         location,
         caption,
         memberId,
+        cropX: draftCropX,
+        cropY: draftCropY,
+        cropZoom: draftCropZoom,
       });
       setIsEditing(false);
     } finally {
@@ -86,27 +115,56 @@ export default function PhotoDetailModal({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setIsEditing(!isEditing)}
-              className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-bold text-[#8A442B] flex items-center gap-1 cursor-pointer"
-            >
-              <Edit3 className="w-3 h-3" />
-              <span>{isEditing ? '닫기' : '수정'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('이 사진을 삭제할까요?')) {
-                  onDeletePhoto(photo.id);
-                  onClose();
-                }
-              }}
-              className="p-1.5 text-[#A69B80] hover:text-[#B64E2E] cursor-pointer"
-              title="삭제"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {canManagePhoto && (
+              <>
+                {isEditing ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdits}
+                      className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-bold text-[#8A442B] cursor-pointer"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={handleSaveEdits}
+                      className="px-3.5 py-1 rounded-full bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{saving ? '저장 중...' : '완료'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetDraftFromPhoto(photo);
+                      setIsEditing(true);
+                    }}
+                    className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-bold text-[#8A442B] hover:border-[#B64E2E] flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>수정</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('이 사진을 삭제할까요?')) {
+                      onDeletePhoto(photo.id);
+                      onClose();
+                    }
+                  }}
+                  className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-bold text-[#B64E2E] hover:bg-[#B64E2E] hover:text-[#FBF8F3] flex items-center gap-1 cursor-pointer transition-colors"
+                  title="사진 삭제"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>삭제</span>
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -119,30 +177,47 @@ export default function PhotoDetailModal({
 
         {/* Scrollable Content */}
         <div className="overflow-y-auto flex-1">
-          {/* Photo Viewer */}
+          {/* Photo Viewer (기본은 감상 전용 · [수정] 버튼을 눌러야 확대/축소·이동 가능) */}
           <div className="bg-[#F2EDE3] relative">
             <div className="p-5 sm:p-7 flex items-center justify-center">
               <FramePhotoItem
-                photo={photo}
-                isRepositionMode={true}
-                onUpdatePhotoPosition={onUpdatePhoto}
+                photo={
+                  isEditing
+                    ? {
+                        ...photo,
+                        cropX: draftCropX,
+                        cropY: draftCropY,
+                        cropZoom: draftCropZoom,
+                      }
+                    : photo
+                }
+                isRepositionMode={isEditing}
+                onUpdatePhotoPosition={isEditing ? handleDraftPositionChange : undefined}
                 className="w-full aspect-square overflow-hidden"
               />
             </div>
-            <div className="px-5 py-3 border-t border-[#E6DEC8] flex items-center justify-between text-xs text-[#8A442B]">
-              <span>드래그하여 사진첩 내 위치 조절</span>
-              <button
-                type="button"
-                onClick={() => onSetAsCover(photo.url)}
-                className={`px-3.5 py-1 rounded-full text-xs font-bold cursor-pointer ${
-                  isCurrentCover
-                    ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                    : 'border border-[#B64E2E]/50 text-[#8A442B]'
-                }`}
-              >
-                {isCurrentCover ? '현재 표지 사진' : '표지 사진으로 지정 +'}
-              </button>
-            </div>
+            {(isEditing || isRepresentative) && (
+              <div className="px-5 py-3 border-t border-[#E6DEC8] flex flex-wrap items-center justify-between gap-2 text-xs text-[#8A442B]">
+                <span>
+                  {isEditing
+                    ? '두 손가락으로 늘렸다 줄여 확대·축소하거나 드래그 후 [완료]를 눌러주세요'
+                    : '위치·크기 조절은 상단 [수정] 버튼을 눌러주세요'}
+                </span>
+                {isRepresentative && (
+                  <button
+                    type="button"
+                    onClick={() => onSetAsCover(photo.url)}
+                    className={`px-3.5 py-1 rounded-full text-xs font-bold cursor-pointer shrink-0 ${
+                      isCurrentCover
+                        ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                        : 'border border-[#B64E2E]/50 text-[#8A442B]'
+                    }`}
+                  >
+                    {isCurrentCover ? '현재 표지 사진' : '표지 사진으로 지정 +'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="p-5 space-y-4">
@@ -153,8 +228,9 @@ export default function PhotoDetailModal({
                     <label className="block text-xs font-bold text-[#8A442B] mb-1">작성자</label>
                     <select
                       value={memberId}
+                      disabled={!isRepresentative}
                       onChange={(e) => setMemberId(e.target.value)}
-                      className="w-full bg-[#FBF8F3] rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-[#5E3422]"
+                      className="w-full bg-[#FBF8F3] rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-[#5E3422] disabled:opacity-70"
                     >
                       {members.map((m) => (
                         <option key={m.id} value={m.id}>
@@ -179,6 +255,7 @@ export default function PhotoDetailModal({
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
+                    placeholder="촬영 장소 입력"
                     className="w-full bg-[#FBF8F3] rounded-xl px-3 py-2 text-xs sm:text-sm text-[#5E3422]"
                   />
                 </div>
@@ -188,18 +265,28 @@ export default function PhotoDetailModal({
                     rows={3}
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
+                    placeholder="사진에 담긴 이야기를 적어주세요"
                     className="w-full bg-[#FBF8F3] rounded-xl p-3 text-xs sm:text-sm text-[#5E3422] resize-none"
                   />
                 </div>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={handleSaveEdits}
-                  className="w-full py-2.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>저장하기</span>
-                </button>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdits}
+                    className="px-5 py-2.5 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm font-bold text-[#8A442B] hover:bg-[#FBF8F3] cursor-pointer"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={handleSaveEdits}
+                    className="flex-1 py-2.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{saving ? '저장 중...' : '완료 (수정한 내용 저장)'}</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

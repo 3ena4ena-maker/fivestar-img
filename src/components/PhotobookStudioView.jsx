@@ -80,9 +80,9 @@ const COVER_LAYOUT_OPTIONS = [
   },
   {
     id: 'custom-upload',
-    label: '직접 만든 표지 올리기 +',
-    desc: '내 기기에서 표지 사진 등록 · 드래그 크기 조절',
-    tag: '직접 등록',
+    label: '전면 사진 표지형',
+    desc: '올린 사진 선택 또는 직접 등록 · 크기 조절',
+    tag: '전면 표지',
   },
 ];
 
@@ -165,10 +165,28 @@ export default function PhotobookStudioView({
   onUpdatePhotoPosition,
   onPublishBookToLibrary,
 }) {
+  const payerMemberId = bookSettings.payerMemberId || 'member-first';
+  const representativeMember =
+    members.find((m) => m.id === payerMemberId) ||
+    members.find((m) => m.id === 'member-first') ||
+    members[0] || { id: 'member-first', name: '막둥이 세나', city: '부산' };
+  const activeMemberObj =
+    members.find((m) => m.id === activeMemberId) ||
+    members[0] ||
+    representativeMember;
+  const isRepresentative = activeMemberObj.id === representativeMember.id;
+
   const [viewType, setViewType] = useState('single');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isRepositionMode, setIsRepositionMode] = useState(false);
   const [showCoverPhotoPicker, setShowCoverPhotoPicker] = useState(false);
+
+  useEffect(() => {
+    if (!isRepresentative) {
+      setIsRepositionMode(false);
+      setShowCoverPhotoPicker(false);
+    }
+  }, [isRepresentative]);
   const [showCoverEditor, setShowCoverEditor] = useState(true);
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
   // 모바일 전용: 01 / 02 / 03 섹션 열기·닫기 아코디언 상태 (웹 lg 이상에서는 항상 모두 펼쳐짐)
@@ -183,7 +201,12 @@ export default function PhotobookStudioView({
   const [tripDestinationTitle, setTripDestinationTitle] = useState(
     '2026 여름 부산·남해 가족 여행'
   );
-  const [bestGroupPhotoId, setBestGroupPhotoId] = useState('');
+  const [bestGroupPhotoId, setBestGroupPhotoId] = useState(
+    bookSettings.bestGroupPhotoId || ''
+  );
+  const [coverPhotoIds, setCoverPhotoIds] = useState(() =>
+    Array.isArray(bookSettings.coverPhotoIds) ? bookSettings.coverPhotoIds : []
+  );
   const [tocHeaderLeft, setTocHeaderLeft] = useState(
     bookSettings.tocHeaderLeft !== undefined
       ? bookSettings.tocHeaderLeft
@@ -326,6 +349,12 @@ export default function PhotobookStudioView({
     if (bookSettings.coverPhotoUrl !== undefined) {
       setCustomCoverPhotoUrl(bookSettings.coverPhotoUrl);
     }
+    if (bookSettings.bestGroupPhotoId !== undefined) {
+      setBestGroupPhotoId(bookSettings.bestGroupPhotoId || '');
+    }
+    if (Array.isArray(bookSettings.coverPhotoIds)) {
+      setCoverPhotoIds(bookSettings.coverPhotoIds);
+    }
     if (typeof bookSettings.coverCropX === 'number') {
       setCoverCropX(bookSettings.coverCropX);
     }
@@ -372,6 +401,7 @@ export default function PhotobookStudioView({
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
         setCustomCoverPhotoUrl(dataUrl);
+        setBestGroupPhotoId('');
         setCoverCropX(50);
         setCoverCropY(50);
         setCoverCropZoom(1);
@@ -381,6 +411,7 @@ export default function PhotobookStudioView({
         setIsRepositionMode(true);
         if (onUpdateBookSettings) {
           onUpdateBookSettings({
+            bestGroupPhotoId: '',
             coverPhotoUrl: dataUrl,
             coverCropX: 50,
             coverCropY: 50,
@@ -424,6 +455,82 @@ export default function PhotobookStudioView({
     return periodCandidatePhotos.filter((p) => !ex.has(p.id));
   }, [periodCandidatePhotos, excludedPhotoIds]);
 
+  // 표지 사진으로 선택할 수 있는 전체 올린 사진 목록 (현재 기간 수록 사진 우선 + 나머지 올린 가족 사진)
+  const availableCoverPhotos = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const p of curatedPhotos) {
+      if (p && p.id && !seen.has(p.id)) {
+        seen.add(p.id);
+        list.push(p);
+      }
+    }
+    for (const p of photos) {
+      if (p && p.id && !seen.has(p.id)) {
+        seen.add(p.id);
+        list.push(p);
+      }
+    }
+    return list;
+  }, [curatedPhotos, photos]);
+
+  // 올린 사진에서 표지 사진을 클릭해 선택하는 핸들러 (단일 사진 표지 및 3단/멀티콜라주 다중 사진 표지 모두 지원)
+  const handleSelectUploadedCoverPhoto = (photo) => {
+    if (!photo) return;
+    const isMultiCover =
+      coverLayout === 'stay-green-trio' || coverLayout === 'multi-collage';
+    const maxSlots = coverLayout === 'stay-green-trio' ? 3 : 9;
+
+    if (isMultiCover) {
+      setCoverPhotoIds((prev) => {
+        const exists = prev.includes(photo.id);
+        let nextIds;
+        if (exists) {
+          nextIds = prev.length > 1 ? prev.filter((id) => id !== photo.id) : prev;
+        } else {
+          nextIds =
+            prev.length >= maxSlots
+              ? [...prev.slice(0, maxSlots - 1), photo.id]
+              : [...prev, photo.id];
+        }
+        const primaryPhoto =
+          availableCoverPhotos.find((p) => p.id === nextIds[0]) || photo;
+        setBestGroupPhotoId(primaryPhoto.id);
+        setCustomCoverPhotoUrl(primaryPhoto.url);
+        setCoverShowPhoto(true);
+        setCurrentIndex(0);
+        if (onUpdateBookSettings) {
+          onUpdateBookSettings({
+            bestGroupPhotoId: primaryPhoto.id,
+            coverPhotoUrl: primaryPhoto.url,
+            coverPhotoIds: nextIds,
+          });
+        }
+        return nextIds;
+      });
+      return;
+    }
+
+    setBestGroupPhotoId(photo.id);
+    setCustomCoverPhotoUrl(photo.url);
+    setCoverPhotoIds([photo.id]);
+    setCoverCropX(50);
+    setCoverCropY(50);
+    setCoverCropZoom(1);
+    setCoverShowPhoto(true);
+    setCurrentIndex(0);
+    if (onUpdateBookSettings) {
+      onUpdateBookSettings({
+        bestGroupPhotoId: photo.id,
+        coverPhotoUrl: photo.url,
+        coverPhotoIds: [photo.id],
+        coverCropX: 50,
+        coverCropY: 50,
+        coverCropZoom: 1,
+      });
+    }
+  };
+
   const currentPeriodLabel = useMemo(() => {
     if (periodType === 'half') {
       return halfYear === 'first'
@@ -447,6 +554,7 @@ export default function PhotobookStudioView({
       : familyTitleInput.trim() || bookSettings.familyTitle || '박서 오피스 — 우리 가족 사진첩';
     return {
       ...bookSettings,
+      allUploadedPhotos: availableCoverPhotos,
       periodType,
       year: selectedYear,
       halfYear,
@@ -455,6 +563,7 @@ export default function PhotobookStudioView({
       endDate: tripEndDate,
       tripDestinationTitle: tripDestinationTitle.trim(),
       bestGroupPhotoId,
+      coverPhotoIds,
       tocHeaderLeft,
       tocHeaderRight,
       tocSubTitle,
@@ -479,6 +588,7 @@ export default function PhotobookStudioView({
     };
   }, [
     bookSettings,
+    availableCoverPhotos,
     customBookTitle,
     familyTitleInput,
     koreanTitleInput,
@@ -503,6 +613,7 @@ export default function PhotobookStudioView({
     tripEndDate,
     tripDestinationTitle,
     bestGroupPhotoId,
+    coverPhotoIds,
     tocHeaderLeft,
     tocHeaderRight,
     tocSubTitle,
@@ -674,6 +785,8 @@ export default function PhotobookStudioView({
       coverShowPhoto,
       coverHeaderLeft: coverHeaderLeftInput,
       coverHeaderRight: coverHeaderRightInput,
+      bestGroupPhotoId,
+      coverPhotoIds,
       coverPhotoUrl: customCoverPhotoUrl || bookSettings.coverPhotoUrl,
       coverCropX,
       coverCropY,
@@ -867,12 +980,30 @@ export default function PhotobookStudioView({
 
   return (
     <div className="pb-4">
+      {!isRepresentative && (
+        <div className="mb-3 px-4 py-2.5 rounded-2xl bg-[#F2EDE3] flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-[#8A442B]">
+          <span>
+            현재 <strong className="text-[#5E3422]">{activeMemberObj.name}</strong> 프로필로{' '}
+            <strong className="text-[#B64E2E]">사진첩 미리보기 전용 모드</strong>입니다.
+          </span>
+          <span className="text-[11px] sm:text-xs text-[#A69B80]">
+            디자인·문구 수정은 대표 가족({representativeMember.name})만 가능합니다
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-start">
         {/* ===================================================================
-            좌측(데스크톱 좌측 한 화면 고정): 사진첩 미리보기 뷰어
+            좌측(대표 가족: 좌측 6열 / 일반 가족: 중앙 미리보기 전용): 사진첩 미리보기 뷰어
         =================================================================== */}
-        <section className="lg:col-span-6 space-y-2.5 order-2 lg:order-1">
-          {/* 상단 통합 컨트롤 바 (보기 전환 + 페이지 이동 + 위치조절/사진수정) */}
+        <section
+          className={
+            isRepresentative
+              ? 'lg:col-span-6 space-y-2.5 order-2 lg:order-1'
+              : 'lg:col-span-8 lg:col-start-3 space-y-3'
+          }
+        >
+          {/* 상단 통합 컨트롤 바 (보기 전환 + 페이지 이동 + 대표 가족 전용 위치조절/사진수정) */}
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <div className="flex items-center gap-1.5">
               <button
@@ -928,50 +1059,52 @@ export default function PhotobookStudioView({
               </div>
             )}
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRepositionMode((prev) => !prev);
-                  setShowCoverPhotoPicker(false);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
-                  isRepositionMode
-                    ? 'bg-[#806E43] text-[#FBF8F3]'
-                    : 'border border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
-                }`}
-              >
-                <Move className="w-3.5 h-3.5" />
-                <span>{isRepositionMode ? '위치 완료' : '사진 위치 조절'}</span>
-              </button>
+            {isRepresentative && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRepositionMode((prev) => !prev);
+                    setShowCoverPhotoPicker(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                    isRepositionMode
+                      ? 'bg-[#806E43] text-[#FBF8F3]'
+                      : 'border border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
+                  }`}
+                >
+                  <Move className="w-3.5 h-3.5" />
+                  <span>{isRepositionMode ? '위치 완료' : '사진 위치 조절'}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCoverPhotoPicker((prev) => !prev);
-                  setIsRepositionMode(false);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
-                  showCoverPhotoPicker
-                    ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                    : 'border border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
-                }`}
-              >
-                <ImagePlus className="w-3.5 h-3.5" />
-                <span>{showCoverPhotoPicker ? '수정 닫기' : '사진 수정'}</span>
-              </button>
-              <input
-                ref={coverPhotoInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleCoverFileUpload}
-                className="hidden"
-              />
-            </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCoverPhotoPicker((prev) => !prev);
+                    setIsRepositionMode(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                    showCoverPhotoPicker
+                      ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                      : 'border border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
+                  }`}
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  <span>{showCoverPhotoPicker ? '수정 닫기' : '사진 수정'}</span>
+                </button>
+                <input
+                  ref={coverPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverFileUpload}
+                  className="hidden"
+                />
+              </div>
+            )}
           </div>
 
-          {/* 사진 위치·확대/축소·상하좌우 이동 조절 바 */}
-          {isRepositionMode && (
+          {/* 사진 위치·확대/축소·상하좌우 이동 조절 바 (대표 가족 전용) */}
+          {isRepresentative && isRepositionMode && (
             <div className="bg-[#F2EDE3] p-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-[11px] text-[#8A442B]">
                 <span className="font-bold text-[#5E3422]">
@@ -1060,53 +1193,55 @@ export default function PhotobookStudioView({
             </div>
           )}
 
-          {/* 사진 수정 패널 */}
-          {showCoverPhotoPicker && (
+          {/* 사진 수정 패널 (대표 가족 전용) */}
+          {isRepresentative && showCoverPhotoPicker && (
             <div className="bg-[#F2EDE3] p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-[#5E3422]">
-                  표지 사진 바꾸기 (가족 사진 선택 또는 기기에서 업로드)
+                  {coverLayout === 'stay-green-trio'
+                    ? `올린 사진에서 표지 사진 3장 순서대로 선택 (전체 ${availableCoverPhotos.length}장)`
+                    : coverLayout === 'multi-collage'
+                    ? `올린 사진에서 표지 콜라주 사진 순서대로 선택 (전체 ${availableCoverPhotos.length}장)`
+                    : `올린 가족 사진에서 표지 사진 선택 (전체 ${availableCoverPhotos.length}장)`}
                 </span>
                 <button
                   type="button"
                   onClick={() => coverPhotoInputRef.current?.click()}
                   className="px-3 py-1 rounded-full bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] text-xs font-bold cursor-pointer shrink-0"
                 >
-                  내 기기에서 사진 올리기 +
+                  내 기기에서 새 사진 추가 +
                 </button>
               </div>
 
               <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-28 overflow-y-auto">
-                {curatedPhotos.map((p) => {
-                  const isCurrent =
-                    (customCoverPhotoUrl && customCoverPhotoUrl === p.url) ||
-                    (!customCoverPhotoUrl && bestGroupPhotoId === p.id);
+                {availableCoverPhotos.map((p) => {
+                  const isMultiCover =
+                    coverLayout === 'stay-green-trio' || coverLayout === 'multi-collage';
+                  const multiOrderIdx = isMultiCover ? coverPhotoIds.indexOf(p.id) : -1;
+                  const isCurrent = isMultiCover
+                    ? multiOrderIdx >= 0
+                    : (customCoverPhotoUrl && customCoverPhotoUrl === p.url) ||
+                      bestGroupPhotoId === p.id ||
+                      (!customCoverPhotoUrl &&
+                        !bestGroupPhotoId &&
+                        pages[0]?.bestGroupPhoto?.id === p.id);
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => {
-                        setBestGroupPhotoId(p.id);
-                        setCustomCoverPhotoUrl(p.url);
-                        setCoverCropX(50);
-                        setCoverCropY(50);
-                        setCoverCropZoom(1);
-                        setCoverShowPhoto(true);
-                        setCurrentIndex(0);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({
-                            coverPhotoUrl: p.url,
-                            coverCropX: 50,
-                            coverCropY: 50,
-                            coverCropZoom: 1,
-                          });
-                        }
-                      }}
+                      onClick={() => handleSelectUploadedCoverPhoto(p)}
                       className={`relative aspect-square overflow-hidden bg-[#E6DEC8] cursor-pointer transition-all ${
-                        isCurrent ? 'ring-2 ring-[#B64E2E] scale-[0.98]' : 'opacity-85 hover:opacity-100'
+                        isCurrent
+                          ? 'ring-2 ring-[#B64E2E] scale-[0.98]'
+                          : 'opacity-85 hover:opacity-100'
                       }`}
                     >
                       <img src={p.url} alt="" className="w-full h-full object-cover" />
+                      {isCurrent && (
+                        <span className="absolute top-1 right-1 px-1.5 py-0.2 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[9px] font-bold shadow-xs">
+                          {isMultiCover ? `${multiOrderIdx + 1}` : '표지'}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1125,11 +1260,17 @@ export default function PhotobookStudioView({
                   side="single"
                   printSpec={pdfRenderSpec}
                   onSelectPhoto={onSelectPhoto}
-                  onCycleVariant={onCycleVariant}
-                  onUpdatePhotoPosition={handleStudioUpdatePhotoPosition}
-                  onUpdateMonthlyHighlight={handleUpdateMonthlyHighlight}
-                  isRepositionMode={isRepositionMode}
-                  onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
+                  onCycleVariant={isRepresentative ? onCycleVariant : undefined}
+                  onUpdatePhotoPosition={
+                    isRepresentative ? handleStudioUpdatePhotoPosition : undefined
+                  }
+                  onUpdateMonthlyHighlight={
+                    isRepresentative ? handleUpdateMonthlyHighlight : undefined
+                  }
+                  isRepositionMode={isRepresentative && isRepositionMode}
+                  onToggleRepositionMode={
+                    isRepresentative ? () => setIsRepositionMode((p) => !p) : undefined
+                  }
                 />
               </div>
             </div>
@@ -1160,10 +1301,14 @@ export default function PhotobookStudioView({
                       side="single"
                       printSpec={pdfRenderSpec}
                       onSelectPhoto={onSelectPhoto}
-                      onCycleVariant={onCycleVariant}
-                      onUpdatePhotoPosition={handleStudioUpdatePhotoPosition}
-                      isRepositionMode={isRepositionMode}
-                      onToggleRepositionMode={() => setIsRepositionMode((p) => !p)}
+                      onCycleVariant={isRepresentative ? onCycleVariant : undefined}
+                      onUpdatePhotoPosition={
+                        isRepresentative ? handleStudioUpdatePhotoPosition : undefined
+                      }
+                      isRepositionMode={isRepresentative && isRepositionMode}
+                      onToggleRepositionMode={
+                        isRepresentative ? () => setIsRepositionMode((p) => !p) : undefined
+                      }
                     />
                   </div>
                 </div>
@@ -1171,52 +1316,71 @@ export default function PhotobookStudioView({
             </div>
           )}
 
-          {/* 하단 PDF 저장 & 제작 보관 버튼 (컴팩트 1줄) */}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setIsCheckoutOpen(true)}
-              className="py-2 px-3 rounded-full bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>서재 보관 · 책 인쇄 +</span>
-            </button>
+          {/* 하단 PDF 저장 & 제작 보관 버튼 (대표 가족: 3버튼 / 일반 가족: 열람용 PDF 저장) */}
+          {isRepresentative ? (
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCheckoutOpen(true)}
+                className="py-2 px-3 rounded-full bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>서재 보관 · 책 인쇄 +</span>
+              </button>
 
-            <button
-              type="button"
-              disabled={Boolean(pdfProgress)}
-              onClick={() => handleDownloadPdf('digital-rgb')}
-              className="py-2 px-3 rounded-full border border-[#B64E2E]/50 text-[#8A442B] hover:border-[#B64E2E] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              {pdfProgress && pdfProgress.spec === 'digital-rgb' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-              <span>열람용 PDF 저장</span>
-            </button>
+              <button
+                type="button"
+                disabled={Boolean(pdfProgress)}
+                onClick={() => handleDownloadPdf('digital-rgb')}
+                className="py-2 px-3 rounded-full border border-[#B64E2E]/50 text-[#8A442B] hover:border-[#B64E2E] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {pdfProgress && pdfProgress.spec === 'digital-rgb' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>열람용 PDF 저장</span>
+              </button>
 
-            <button
-              type="button"
-              disabled={Boolean(pdfProgress)}
-              onClick={() => handleDownloadPdf('press-bleed')}
-              className="py-2 px-3 rounded-full border border-[#B64E2E]/50 text-[#8A442B] hover:border-[#B64E2E] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              {pdfProgress && pdfProgress.spec === 'press-bleed' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Printer className="w-3.5 h-3.5" />
-              )}
-              <span>인쇄용 PDF (300DPI)</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                disabled={Boolean(pdfProgress)}
+                onClick={() => handleDownloadPdf('press-bleed')}
+                className="py-2 px-3 rounded-full border border-[#B64E2E]/50 text-[#8A442B] hover:border-[#B64E2E] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {pdfProgress && pdfProgress.spec === 'press-bleed' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Printer className="w-3.5 h-3.5" />
+                )}
+                <span>인쇄용 PDF (300DPI)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                disabled={Boolean(pdfProgress)}
+                onClick={() => handleDownloadPdf('digital-rgb')}
+                className="py-2.5 px-6 rounded-full border border-[#B64E2E]/50 text-[#8A442B] hover:border-[#B64E2E] text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {pdfProgress && pdfProgress.spec === 'digital-rgb' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>우리 가족 사진첩 열람용 PDF 저장</span>
+              </button>
+            </div>
+          )}
         </section>
 
         {/* ===================================================================
-            우측(웹에서는 한 화면에 모두 펼쳐서 노출 / 모바일에서는 01·02·03을 열고 닫으며 아래 미리보기와 동시에 확인)
+            우측(대표 가족에게만 노출 — 일반 가족은 미리보기만 표시)
             - 목차(2쪽) 미리보기 중일 때: 03 / 목차 문구 · 1월~12월 하이라이트 섹션만 노출
             - 그 외 책자 미리보기 페이지일 때: 01, 02 섹션만 노출
         =================================================================== */}
-        <div className="lg:col-span-6 space-y-2.5 lg:space-y-4 order-1 lg:order-2">
+        {isRepresentative && (
+          <div className="lg:col-span-6 space-y-2.5 lg:space-y-4 order-1 lg:order-2">
           {viewType === 'single' && pages[currentIndex]?.type === 'prologue' ? (
             /* 3. 목차 상단 문구 및 1월~12월 하이라이트 글귀 간편 입력 */
             <section className="space-y-2 lg:space-y-3">
@@ -1700,7 +1864,7 @@ export default function PhotobookStudioView({
                       : 'hidden'
                   } lg:block lg:max-h-none lg:overflow-visible lg:space-y-3`}
                 >
-                  {/* 표지 디자인 9종 선택 (3x3 그리드, 직접 올리기 포함) */}
+                  {/* 표지 디자인 9종 선택 (3x3 그리드) + 올린 사진에서 표지 사진 선택 */}
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {COVER_LAYOUT_OPTIONS.map((opt) => {
@@ -1712,17 +1876,14 @@ export default function PhotobookStudioView({
                             type="button"
                             onClick={() => {
                               setCoverLayout(opt.id);
-                              if (opt.id === 'typography-cover') {
-                                setCoverShowPhoto(false);
-                              } else {
-                                setCoverShowPhoto(true);
-                              }
+                              const nextShowPhoto = opt.id !== 'typography-cover';
+                              setCoverShowPhoto(nextShowPhoto);
                               setCurrentIndex(0);
-                              if (isCustomUpload) {
-                                setIsRepositionMode(true);
-                                if (!customCoverPhotoUrl) {
-                                  coverPhotoInputRef.current?.click();
-                                }
+                              if (onUpdateBookSettings) {
+                                onUpdateBookSettings({
+                                  coverLayout: opt.id,
+                                  coverShowPhoto: nextShowPhoto,
+                                });
                               }
                             }}
                             className={`p-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
@@ -1748,75 +1909,142 @@ export default function PhotobookStudioView({
                       })}
                     </div>
 
-                    {/* 직접 올리기 & 표지 사진 드래그 크기 조절 빠른 바 */}
-                    <div className="bg-[#F2EDE3] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => coverPhotoInputRef.current?.click()}
-                          className="px-3 py-1 rounded-full bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] text-xs font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          <ImagePlus className="w-3.5 h-3.5" />
-                          <span>내 기기에서 표지 사진 직접 올리기 +</span>
-                        </button>
-                        {coverLayout === 'custom-upload' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = !customCoverShowText;
-                              setCustomCoverShowText(next);
-                              if (onUpdateBookSettings) {
-                                onUpdateBookSettings({ customCoverShowText: next });
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold cursor-pointer ${
-                              customCoverShowText
-                                ? 'bg-[#5E3422] text-[#FBF8F3]'
-                                : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
-                            }`}
-                          >
-                            {customCoverShowText ? '표지 문구 표시 ON' : '표지 문구 숨김 (순수 이미지)'}
-                          </button>
-                        )}
-                      </div>
+                    {/* 올린 가족 사진에서 표지 사진 선택 & 크기 조절 패널 */}
+                    {coverLayout !== 'typography-cover' && (
+                      <div className="bg-[#F2EDE3] p-2.5 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <span className="text-xs font-bold text-[#5E3422]">
+                            {coverLayout === 'stay-green-trio'
+                              ? `올린 사진에서 표지 사진 선택 (최대 3장 순서대로 클릭 · 총 ${availableCoverPhotos.length}장)`
+                              : coverLayout === 'multi-collage'
+                              ? `올린 사진에서 표지 콜라주 사진 선택 (최대 9장 순서대로 클릭 · 총 ${availableCoverPhotos.length}장)`
+                              : `올린 사진에서 표지 사진 선택 (클릭 시 표지에 바로 적용 · 총 ${availableCoverPhotos.length}장)`}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {coverLayout === 'custom-upload' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = !customCoverShowText;
+                                  setCustomCoverShowText(next);
+                                  if (onUpdateBookSettings) {
+                                    onUpdateBookSettings({ customCoverShowText: next });
+                                  }
+                                }}
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer ${
+                                  customCoverShowText
+                                    ? 'bg-[#5E3422] text-[#FBF8F3]'
+                                    : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
+                                }`}
+                              >
+                                {customCoverShowText ? '표지 문구 표시 ON' : '표지 문구 숨김'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => coverPhotoInputRef.current?.click()}
+                              className="px-2.5 py-0.5 rounded-full border border-[#B64E2E]/45 bg-[#FBF8F3] hover:border-[#B64E2E] text-[#8A442B] text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                            >
+                              <ImagePlus className="w-3 h-3" />
+                              <span>기기에서 추가 +</span>
+                            </button>
+                          </div>
+                        </div>
 
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        <span className="text-[11px] font-medium text-[#5E3422]">
-                          표지 사진 크기(드래그):
-                        </span>
-                        <input
-                          type="range"
-                          min="0.4"
-                          max="3.0"
-                          step="0.02"
-                          value={coverCropZoom}
-                          onChange={(e) => {
-                            setCurrentIndex(0);
-                            setIsRepositionMode(true);
-                            handleToolbarAdjustPosition(0, 0, 0, false, Number(e.target.value));
-                          }}
-                          title="드래그하여 표지 사진 크기 조절 (40% ~ 300%)"
-                          className="w-20 sm:w-28 accent-[#B64E2E] cursor-ew-resize"
-                        />
-                        <span className="text-xs font-mono-meta font-bold text-[#B64E2E] min-w-[36px] text-right">
-                          {Math.round(coverCropZoom * 100)}%
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCurrentIndex(0);
-                            setIsRepositionMode((prev) => !prev);
-                          }}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold cursor-pointer ${
-                            isRepositionMode
-                              ? 'bg-[#806E43] text-[#FBF8F3]'
-                              : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
-                          }`}
-                        >
-                          {isRepositionMode ? '드래그 조절 켜짐' : '모서리 드래그 조절'}
-                        </button>
+                        {availableCoverPhotos.length > 0 ? (
+                          <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 max-h-28 overflow-y-auto p-1 bg-[#FBF8F3]">
+                            {availableCoverPhotos.map((p) => {
+                              const isMultiCover =
+                                coverLayout === 'stay-green-trio' ||
+                                coverLayout === 'multi-collage';
+                              const multiOrderIdx = isMultiCover
+                                ? coverPhotoIds.indexOf(p.id)
+                                : -1;
+                              const isCurrent = isMultiCover
+                                ? multiOrderIdx >= 0
+                                : (customCoverPhotoUrl && customCoverPhotoUrl === p.url) ||
+                                  bestGroupPhotoId === p.id ||
+                                  (!customCoverPhotoUrl &&
+                                    !bestGroupPhotoId &&
+                                    pages[0]?.bestGroupPhoto?.id === p.id);
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => handleSelectUploadedCoverPhoto(p)}
+                                  title={p.caption || '클릭하여 표지 사진으로 선택'}
+                                  className={`relative aspect-square overflow-hidden bg-[#E6DEC8] cursor-pointer transition-all ${
+                                    isCurrent
+                                      ? 'ring-2 ring-[#B64E2E] scale-[0.97]'
+                                      : 'opacity-80 hover:opacity-100'
+                                  }`}
+                                >
+                                  <img
+                                    src={p.url}
+                                    alt={p.caption || ''}
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {isCurrent && (
+                                    <span className="absolute top-0.5 right-0.5 px-1.5 py-0.2 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[9px] font-bold shadow-xs">
+                                      {isMultiCover ? `${multiOrderIdx + 1}` : '표지'}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="py-3 text-center text-xs text-[#8A442B] bg-[#FBF8F3]">
+                            아직 올린 가족 사진이 없습니다. 먼저 사진을 올려주세요.
+                          </div>
+                        )}
+
+                        <div className="pt-1 flex flex-wrap items-center justify-between gap-2 border-t border-[#5E3422]/10">
+                          <span className="text-[11px] font-medium text-[#5E3422]">
+                            표지 사진 크기 · 위치 조절
+                          </span>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <input
+                              type="range"
+                              min="0.4"
+                              max="3.0"
+                              step="0.02"
+                              value={coverCropZoom}
+                              onChange={(e) => {
+                                setCurrentIndex(0);
+                                setIsRepositionMode(true);
+                                handleToolbarAdjustPosition(
+                                  0,
+                                  0,
+                                  0,
+                                  false,
+                                  Number(e.target.value)
+                                );
+                              }}
+                              title="드래그하여 표지 사진 크기 조절 (40% ~ 300%)"
+                              className="w-20 sm:w-28 accent-[#B64E2E] cursor-ew-resize"
+                            />
+                            <span className="text-xs font-mono-meta font-bold text-[#B64E2E] min-w-[36px] text-right">
+                              {Math.round(coverCropZoom * 100)}%
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentIndex(0);
+                                setIsRepositionMode((prev) => !prev);
+                              }}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold cursor-pointer ${
+                                isRepositionMode
+                                  ? 'bg-[#806E43] text-[#FBF8F3]'
+                                  : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
+                              }`}
+                            >
+                              {isRepositionMode ? '위치 조절 완료' : '위치·크기 조절'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* 표지 배경색 변경 (12색 팔레트 스와치 바) */}
@@ -1964,7 +2192,8 @@ export default function PhotobookStudioView({
               </section>
             </>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 3. 사진첩 제작 신청 & 가족 서재 보관 모달 */}

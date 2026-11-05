@@ -113,6 +113,62 @@ async function startServer() {
   app.use(express.json({ limit: '25mb' }));
   app.use('/uploads', express.static(UPLOADS_DIR));
 
+  const CLOUD_ORIGIN = process.env.CLOUD_ORIGIN || 'https://fivestar-img.pages.dev';
+
+  // Proxy /api/photo-image/:photoId from Cloudflare KV so mobile-uploaded photos render on localhost too
+  app.get('/api/photo-image/:photoId', async (req, res) => {
+    try {
+      const upstream = await fetch(`${CLOUD_ORIGIN}/api/photo-image/${req.params.photoId}`);
+      if (!upstream.ok) {
+        return res.status(upstream.status).send('Image not found');
+      }
+      const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+      const arrayBuf = await upstream.arrayBuffer();
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(Buffer.from(arrayBuf));
+    } catch (err) {
+      console.error('Photo proxy error:', err.message);
+      return res.status(502).send('Failed to load cloud image');
+    }
+  });
+
+  // Live Cloud Bridge: Sync all JSON /api/* requests with Cloudflare KV (https://fivestar-img.pages.dev)
+  // so mobile devices and http://localhost:3456 always share the exact same database in real time
+  app.use('/api', async (req, res, next) => {
+    const contentType = req.headers['content-type'] || '';
+    if (contentType.includes('multipart/form-data')) {
+      return next(); // Handled by POST /api/photos below with multer + FormData bridge
+    }
+    try {
+      const targetUrl = `${CLOUD_ORIGIN}/api${req.url}`;
+      const fetchOptions = {
+        method: req.method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (!['GET', 'HEAD'].includes(req.method.toUpperCase()) && req.body) {
+        fetchOptions.body = JSON.stringify(req.body);
+      }
+      const upstream = await fetch(targetUrl, fetchOptions);
+      if (upstream.ok) {
+        const data = await upstream.json();
+        // Mirror full archive state locally when GET /api/archive succeeds
+        if (req.method.toUpperCase() === 'GET' && req.url.startsWith('/archive') && data.photos) {
+          saveLocalDb({
+            members: data.members || DEFAULT_FAMILY_MEMBERS,
+            bookSettings: data.bookSettings || DEFAULT_BOOK_SETTINGS,
+            photos: data.photos || [],
+            updatedAt: data.updatedAt || new Date().toISOString(),
+          });
+        }
+        return res.status(upstream.status).json(data);
+      }
+    } catch (err) {
+      console.warn('Cloud bridge offline, falling back to local DB:', err.message);
+    }
+    return next();
+  });
+
   // GET /api/archive — Fetch entire archive state
   app.get('/api/archive', async (_req, res) => {
     const db = loadLocalDb();
@@ -185,9 +241,38 @@ async function startServer() {
   // POST /api/photos — Upload one or multiple photos with metadata
   app.post('/api/photos', upload.array('files', 30), async (req, res) => {
     try {
-      const db = loadLocalDb();
       const files = req.files || [];
       const metadataList = req.body.metadata ? JSON.parse(req.body.metadata) : [];
+
+      // Forward upload to Cloudflare KV so mobile and localhost share all uploaded photos
+      try {
+        const cloudForm = new FormData();
+        for (const file of files) {
+          const buf = fs.readFileSync(file.path);
+          const blob = new Blob([buf], { type: file.mimetype || 'image/jpeg' });
+          cloudForm.append('files', blob, file.originalname || file.filename);
+        }
+        if (req.body.metadata) {
+          cloudForm.append('metadata', req.body.metadata);
+        }
+        const cloudRes = await fetch(`${CLOUD_ORIGIN}/api/photos`, {
+          method: 'POST',
+          body: cloudForm,
+        });
+        if (cloudRes.ok) {
+          const cloudData = await cloudRes.json();
+          const db = loadLocalDb();
+          if (Array.isArray(cloudData.allPhotos)) {
+            db.photos = cloudData.allPhotos;
+            saveLocalDb(db);
+          }
+          return res.status(201).json(cloudData);
+        }
+      } catch (cloudErr) {
+        console.warn('Cloud upload bridge skipped, saving locally:', cloudErr.message);
+      }
+
+      const db = loadLocalDb();
       const supabase = getSupabaseClient();
 
       const createdPhotos = [];

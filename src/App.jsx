@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BookOpen,
   Upload,
@@ -15,6 +15,7 @@ import {
   Edit3,
   Building2,
   User,
+  Lock,
 } from 'lucide-react';
 import { buildPhotobookPages } from './utils/bookLayoutEngine';
 import HomeFeedView from './components/HomeFeedView';
@@ -61,24 +62,26 @@ export default function App() {
     }
   };
 
-  // 어르신 · 어린이 맞춤 큰 글씨 모드
-  const [largeTextMode, setLargeTextMode] = useState(
-    () => localStorage.getItem('fivestar_large_text') === 'true'
-  );
-
   useEffect(() => {
-    if (largeTextMode) {
-      document.documentElement.classList.add('large-text-mode');
-    } else {
-      document.documentElement.classList.remove('large-text-mode');
-    }
-    localStorage.setItem('fivestar_large_text', String(largeTextMode));
-  }, [largeTextMode]);
+    document.documentElement.classList.remove('large-text-mode');
+    localStorage.removeItem('fivestar_large_text');
+  }, []);
 
-  // 현재 접속 중인 내 가족 프로필
+  // 현재 접속 중인 내 가족 프로필 & 본인 확인(선택) 완료 여부
   const [activeMemberId, setActiveMemberId] = useState(
     () => localStorage.getItem('fivestar_active_member') || 'member-first'
   );
+  const [isMemberConfirmed, setIsMemberConfirmed] = useState(
+    () => localStorage.getItem('fivestar_member_confirmed') === 'true'
+  );
+  const [isChoosingMember, setIsChoosingMember] = useState(false);
+
+  // 우리 가족 전용 페이지 잠금 상태 (가족 비밀번호/초대 코드가 일치해야 열람·업로드 가능)
+  const [unlockedCode, setUnlockedCode] = useState(
+    () => localStorage.getItem('fivestar_unlocked_code') || ''
+  );
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
 
   // 홈(메인 피드) 필터 상태
   const [selectedSeason, setSelectedSeason] = useState('all');
@@ -104,29 +107,70 @@ export default function App() {
     }, 4000);
   };
 
-  const fetchArchive = async () => {
+  const lastUpdatedAtRef = useRef('');
+
+  const fetchArchive = async (silent = false) => {
     try {
-      const res = await fetch('/api/archive');
+      const res = await fetch(`/api/archive?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) throw new Error('Failed to load archive');
       const data = await res.json();
+      const incomingStamp = `${data.cloudStatus?.updatedAt || data.updatedAt || ''}-${
+        (data.photos || []).length
+      }`;
+      if (silent && incomingStamp && incomingStamp === lastUpdatedAtRef.current) {
+        return;
+      }
+      lastUpdatedAtRef.current = incomingStamp;
       setPhotos(data.photos || []);
       setMembers(data.members || []);
       if (data.bookSettings) setBookSettings((prev) => ({ ...prev, ...data.bookSettings }));
       if (data.cloudStatus) setCloudStatus(data.cloudStatus);
     } catch (err) {
-      console.error('Archive load error:', err);
+      if (!silent) console.error('Archive load error:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchArchive();
+    fetchArchive(false);
+
+    const handleSyncOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+          fetchArchive(true);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleSyncOnFocus);
+    document.addEventListener('visibilitychange', handleSyncOnFocus);
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+          fetchArchive(true);
+        }
+      }
+    }, 8000);
+
+    return () => {
+      window.removeEventListener('focus', handleSyncOnFocus);
+      document.removeEventListener('visibilitychange', handleSyncOnFocus);
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleSelectActiveMember = (id) => {
     setActiveMemberId(id);
     localStorage.setItem('fivestar_active_member', id);
+    setIsMemberConfirmed(true);
+    localStorage.setItem('fivestar_member_confirmed', 'true');
+    setIsChoosingMember(false);
     const found = members.find((m) => m.id === id);
     if (found) {
       showToast(`현재 내 프로필이 '${found.name} (${found.city})'(으)로 선택되었습니다.`);
@@ -222,6 +266,13 @@ export default function App() {
   };
 
   const handleDeletePhoto = async (photoId) => {
+    const target = photos.find((p) => p.id === photoId);
+    const payerId = bookSettings.payerMemberId || 'member-first';
+    const isRep = activeMemberId === payerId;
+    if (target && !isRep && target.memberId !== activeMemberId) {
+      showToast('본인이 올린 사진만 삭제할 수 있습니다.');
+      return;
+    }
     const res = await fetch(`/api/photos/${photoId}`, { method: 'DELETE' });
     if (res.ok) {
       const data = await res.json();
@@ -255,6 +306,11 @@ export default function App() {
 
   const handleUpdateBookSettings = async (patch) => {
     setBookSettings((prev) => ({ ...prev, ...patch }));
+    if (typeof patch.familyCode === 'string' && patch.familyCode.trim()) {
+      const cleanCode = patch.familyCode.trim();
+      setUnlockedCode(cleanCode);
+      localStorage.setItem('fivestar_unlocked_code', cleanCode);
+    }
     const res = await fetch('/api/book-settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -562,6 +618,205 @@ export default function App() {
   const currentTabObj =
     BOTTOM_MENUS.find((m) => m.id === activeTab) || BOTTOM_MENUS[0];
 
+  const expectedFamilyCode = String(bookSettings.familyCode || '2026FAM').trim();
+  const isPageUnlocked =
+    unlockedCode.trim().toUpperCase() === expectedFamilyCode.toUpperCase();
+  const payerMemberId = bookSettings.payerMemberId || 'member-first';
+  const isCurrentRepresentative = activeMember.id === payerMemberId;
+
+  const handleUnlockSubmit = (e) => {
+    e.preventDefault();
+    const entered = passcodeInput.trim();
+    if (!entered) {
+      setPasscodeError('가족 비밀번호(초대 코드)를 입력해 주세요.');
+      return;
+    }
+    if (entered.toUpperCase() === expectedFamilyCode.toUpperCase()) {
+      setUnlockedCode(expectedFamilyCode);
+      localStorage.setItem('fivestar_unlocked_code', expectedFamilyCode);
+      setPasscodeInput('');
+      setPasscodeError('');
+      setIsChoosingMember(true);
+    } else {
+      setPasscodeError('비밀번호(초대 코드)가 일치하지 않습니다. 다시 확인해 주세요.');
+    }
+  };
+
+  const handleLockPage = () => {
+    localStorage.removeItem('fivestar_unlocked_code');
+    localStorage.removeItem('fivestar_member_confirmed');
+    setUnlockedCode('');
+    setIsMemberConfirmed(false);
+    setIsChoosingMember(false);
+    setPasscodeInput('');
+    setPasscodeError('');
+  };
+
+  if (!isPageUnlocked) {
+    return (
+      <div className="min-h-screen bg-[#FBF8F3] text-[#5E3422] flex flex-col items-center justify-center px-5 py-12">
+        <div className="w-full max-w-[420px] bg-[#F2EDE3] rounded-3xl p-7 sm:p-9 space-y-6 shadow-xs">
+          <div className="flex flex-col items-center text-center space-y-2.5">
+            <div className="w-12 h-12 rounded-full bg-[#B64E2E] text-[#FBF8F3] flex items-center justify-center">
+              <Lock className="w-5 h-5" />
+            </div>
+            <span className="px-3 py-1 rounded-full bg-[#FBF8F3] text-[#B64E2E] text-xs font-bold tracking-wide">
+              우리 가족 전용 비공개 사진첩
+            </span>
+            <h1 className="font-editorial-ko text-2xl sm:text-3xl font-bold text-[#5E3422] tracking-tight pt-1">
+              {displayFamilyName}
+            </h1>
+            <p className="text-xs sm:text-sm text-[#8A442B] leading-relaxed">
+              초대받은 우리 가족만 사진을 보고 올릴 수 있습니다.
+              <br />
+              전달받은 <strong>가족 비밀번호(초대 코드)</strong>를 입력해 주세요.
+            </p>
+          </div>
+
+          <form onSubmit={handleUnlockSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-[#8A442B] mb-1.5">
+                가족 비밀번호 (초대 코드)
+              </label>
+              <input
+                type="password"
+                value={passcodeInput}
+                onChange={(e) => {
+                  setPasscodeInput(e.target.value);
+                  if (passcodeError) setPasscodeError('');
+                }}
+                placeholder="비밀번호(초대 코드) 입력"
+                autoFocus
+                className="w-full bg-[#FBF8F3] rounded-2xl px-4 py-3.5 text-center text-base font-bold tracking-widest text-[#5E3422] focus:outline-none focus:ring-2 focus:ring-[#B64E2E]"
+              />
+              {passcodeError && (
+                <p className="mt-2 text-xs font-bold text-[#B64E2E] text-center">
+                  {passcodeError}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold cursor-pointer transition-colors disabled:opacity-50"
+            >
+              {loading ? '확인 중...' : '다음 · 내 이름 선택하기'}
+            </button>
+          </form>
+
+          <p className="text-[11px] text-[#A69B80] text-center leading-relaxed">
+            비밀번호 입력 후 본인의 이름을 선택하면 내 프로필과 마이페이지가 연결됩니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 비밀번호 통과 후: 내가 누구인지(가족 구성원 5명 중 본인) 먼저 선택하는 화면
+  if ((!isMemberConfirmed || isChoosingMember) && members.length > 0) {
+    return (
+      <div className="min-h-screen bg-[#FBF8F3] text-[#5E3422] flex flex-col items-center justify-center px-5 py-12">
+        <div className="w-full max-w-[460px] bg-[#F2EDE3] rounded-3xl p-6 sm:p-8 space-y-5 shadow-xs">
+          <div className="flex flex-col items-center text-center space-y-2">
+            <div className="w-12 h-12 rounded-full bg-[#B64E2E] text-[#FBF8F3] flex items-center justify-center">
+              <Users className="w-5 h-5" />
+            </div>
+            <span className="px-3 py-1 rounded-full bg-[#FBF8F3] text-[#B64E2E] text-xs font-bold">
+              입장 가족 본인 확인
+            </span>
+            <h1 className="font-editorial-ko text-xl sm:text-2xl font-bold text-[#5E3422] tracking-tight pt-0.5">
+              반갑습니다! 어떤 가족분이신가요?
+            </h1>
+            <p className="text-xs sm:text-sm text-[#8A442B] leading-relaxed">
+              본인의 이름을 눌러 입장해 주세요.
+              <br />
+              선택한 이름으로 사진을 올리고 내 마이페이지를 이용할 수 있습니다.
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            {members.map((m) => {
+              const isRep = m.id === payerMemberId;
+              const isSelected = m.id === activeMember.id && isMemberConfirmed;
+              const memberPhotoCount = photos.filter((p) => p.memberId === m.id).length;
+
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleSelectActiveMember(m.id)}
+                  className={`w-full p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#FBF8F3] ring-2 ring-[#B64E2E]'
+                      : 'bg-[#FBF8F3] hover:bg-[#E8E1D1]/75'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden"
+                      style={{
+                        backgroundColor: m.badgeBg || '#E8E1D1',
+                        color: m.color || '#8A442B',
+                      }}
+                    >
+                      {m.avatarImage ? (
+                        <img
+                          src={m.avatarImage}
+                          alt={m.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        m.avatar || m.name.slice(0, 2)
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-base font-bold text-[#5E3422] truncate">
+                          {m.name}
+                        </span>
+                        {m.city && (
+                          <span className="text-xs font-medium text-[#8A442B]">
+                            ({m.city})
+                          </span>
+                        )}
+                        {isRep ? (
+                          <span className="px-2 py-0.5 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[11px] font-bold">
+                            대표 가족 · 스튜디오 편집 가능
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-[#F2EDE3] text-[#8A442B] text-[11px] font-medium">
+                            사진첩 미리보기 · 사진 업로드
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#A69B80] mt-0.5">
+                        올린 사진 {memberPhotoCount}장 · 클릭하여 {m.name} 화면으로 입장
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-xs font-bold shrink-0">
+                    입장 →
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {isMemberConfirmed && (
+            <button
+              type="button"
+              onClick={() => setIsChoosingMember(false)}
+              className="w-full py-2.5 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm font-bold text-[#8A442B] hover:bg-[#FBF8F3] cursor-pointer"
+            >
+              현재 프로필({activeMember.name}) 그대로 유지하기
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FBF8F3] text-[#5E3422] flex flex-col">
       {/* 알림 토스트 */}
@@ -577,16 +832,16 @@ export default function App() {
       <div className="no-print w-full min-h-screen flex flex-col relative pb-28 md:pb-16">
         {/* 상단 미니멀 유틸리티 & 네비게이션 바 */}
         <header className="sticky top-0 z-40 bg-[#FBF8F3]/95 backdrop-blur-md">
-          <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-4 pb-3 flex items-center justify-between gap-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pt-3.5 pb-2.5 flex items-center justify-between gap-2">
             {/* 좌측: 데스크톱 메뉴 또는 홈 바로가기 */}
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-6 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab('home');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="text-sm sm:text-base font-medium text-[#8A442B] hover:text-[#B64E2E] cursor-pointer"
+                className="text-xs sm:text-base font-medium text-[#8A442B] hover:text-[#B64E2E] whitespace-nowrap shrink-0 cursor-pointer"
               >
                 우리 가족 기록장
               </button>
@@ -605,7 +860,7 @@ export default function App() {
                         setActiveTab(menu.id);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={`px-4 py-1.5 rounded-full text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                      className={`px-4 py-1.5 rounded-full text-sm sm:text-base font-medium whitespace-nowrap transition-all cursor-pointer ${
                         isActive
                           ? 'bg-[#B64E2E] text-[#FBF8F3]'
                           : 'text-[#8A442B] hover:text-[#B64E2E] hover:bg-[#F2EDE3]'
@@ -618,31 +873,44 @@ export default function App() {
               </nav>
             </div>
 
-            {/* 우측: 큰 글씨 & 사진 올리기 필 버튼 */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* 우측: 현재 접속 가족 표시 · 잠금 · 사진 올리기 필 버튼 */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setLargeTextMode((prev) => !prev)}
-                className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium border transition-colors cursor-pointer ${
-                  largeTextMode
-                    ? 'bg-[#7E7763] text-[#FBF8F3] border-[#7E7763]'
-                    : 'border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E]'
-                }`}
+                onClick={() => setIsChoosingMember(true)}
+                title="입장 가족 선택 화면 보기"
+                className="px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-bold bg-[#F2EDE3] hover:bg-[#E8E1D1] text-[#5E3422] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
               >
-                {largeTextMode ? '기본 글씨' : '큰 글씨'}
+                <User className="w-3.5 h-3.5 text-[#B64E2E] shrink-0" />
+                <span>{activeMember.name}</span>
+                {isCurrentRepresentative && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[10px]">
+                    대표
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLockPage}
+                title="페이지 잠그기"
+                className="px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium border border-[#B64E2E]/45 text-[#8A442B] hover:border-[#B64E2E] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+              >
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span>잠금</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsUploadOpen(true)}
-                className="px-4 py-1.5 sm:px-5 sm:py-2 bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] rounded-full text-xs sm:text-sm font-medium cursor-pointer"
+                className="px-3 sm:px-5 py-1.5 sm:py-2 bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] rounded-full text-xs sm:text-sm font-medium whitespace-nowrap cursor-pointer"
               >
                 사진 올리기 +
               </button>
             </div>
           </div>
 
-          {/* 에디토리얼 타이틀 행 (re_ / Pasta 감성) */}
+          {/* 에디토리얼 타이틀 행 */}
           <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-2 pb-5 flex flex-wrap items-baseline gap-x-4 sm:gap-x-8 gap-y-1">
             <button
               type="button"
@@ -673,6 +941,7 @@ export default function App() {
               photos={photos}
               members={members}
               activeMemberId={activeMember.id}
+              bookSettings={bookSettings}
               selectedMemberId={selectedMemberFilter}
               onSelectMemberId={setSelectedMemberFilter}
               selectedSeason={selectedSeason}
@@ -680,6 +949,7 @@ export default function App() {
               selectedMonth={selectedMonth}
               onSelectMonth={setSelectedMonth}
               onSelectPhoto={(photo) => setSelectedPhotoId(photo.id)}
+              onDeletePhoto={handleDeletePhoto}
               onToggleFavorite={(photo) =>
                 handleUpdatePhoto(photo.id, { isFavorite: !photo.isFavorite })
               }
