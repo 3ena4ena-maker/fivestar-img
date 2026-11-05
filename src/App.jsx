@@ -48,9 +48,18 @@ export default function App() {
   });
   const [loading, setLoading] = useState(true);
 
-  // 진입 즉시 메인 피드가 노출되도록 기본 탭을 'home' (홈 메인 피드)으로 설정!
-  // 'home' | 'studio' | 'library' | 'profile'
-  const [activeTab, setActiveTab] = useState('home');
+  // 진입 즉시 메인 피드가 노출되도록 기본 탭을 'home' (홈 메인 피드)으로 설정, 새로고침 시 현재 탭 유지
+  const [activeTab, setActiveTabState] = useState(
+    () => sessionStorage.getItem('fivestar_active_tab') || 'home'
+  );
+  const setActiveTab = (nextTab) => {
+    setActiveTabState(nextTab);
+    try {
+      sessionStorage.setItem('fivestar_active_tab', nextTab);
+    } catch {
+      // ignore
+    }
+  };
 
   // 어르신 · 어린이 맞춤 큰 글씨 모드
   const [largeTextMode, setLargeTextMode] = useState(
@@ -392,6 +401,29 @@ export default function App() {
     }
   };
 
+  const handleSaveMembersList = async (nextMembers) => {
+    setMembers(nextMembers);
+    syncSubtitleCities(nextMembers);
+
+    try {
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replaceMembers: nextMembers }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.members) {
+          setMembers(data.members);
+          syncSubtitleCities(data.members);
+        }
+      }
+      showToast('가족 구성원 명단이 저장되었습니다.');
+    } catch (err) {
+      console.error('Failed to save members list:', err);
+    }
+  };
+
   const handleSaveCloudConfig = async (cfg) => {
     const res = await fetch('/api/cloud-config', {
       method: 'POST',
@@ -699,6 +731,7 @@ export default function App() {
               onReorderMembers={handleReorderMembers}
               onAddMember={handleAddMember}
               onDeleteMember={handleDeleteMember}
+              onSaveMembersList={handleSaveMembersList}
               onUpdateBookSettings={handleUpdateBookSettings}
               onSwitchToLibrary={() => setActiveTab('library')}
               showToast={showToast}

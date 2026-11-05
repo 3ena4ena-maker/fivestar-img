@@ -28,31 +28,13 @@
       "avatar": "첫째"
     },
     {
-      "id": "member-1793696760221",
-      "name": "첫째 사우 샘",
-      "role": "미국인",
-      "city": "덴버",
-      "color": "#8C5A3C",
-      "badgeBg": "#F5EBE6",
-      "avatar": "첫"
-    },
-    {
-      "id": "member-second",
+      "id": "member-1793845376236-73p",
       "name": "둘째 지혜",
-      "role": "대전",
       "city": "대전",
-      "color": "#6C5B7B",
-      "badgeBg": "#EFEBF5",
+      "role": "대전",
+      "color": "#B64E2E",
+      "badgeBg": "#F4E5DF",
       "avatar": "둘째"
-    },
-    {
-      "id": "member-1793696789538",
-      "name": "둘째 사우 귀열",
-      "role": "대전",
-      "city": "대전",
-      "color": "#8C5A3C",
-      "badgeBg": "#F5EBE6",
-      "avatar": "둘"
     },
     {
       "id": "member-first",
@@ -79,7 +61,47 @@
     "includeExifDetails": true,
     "includeCommentsInBook": true,
     "coverPhotoUrl": "https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=1400&q=85",
-    "familyTitle": "박서 오피스 — 우리 가족 사진첩"
+    "familyTitle": "박서 오피스 — 우리 가족 사진첩",
+    "coverLayout": "multi-collage",
+    "coverBgColor": "#2F3E35",
+    "coverShowPhoto": true,
+    "coverHeaderLeft": "2026 FAMILY ARCHIVE",
+    "coverHeaderRight": "우리 가족 사계절 기록",
+    "coverCropX": 50,
+    "coverCropY": 50,
+    "coverCropZoom": 1.08,
+    "monthlyHighlights": {
+      "1": "새해의 첫 빛과 따뜻한 가족 인사",
+      "2": "겨울 끝자락의 온기와 다정한 안부",
+      "3": "남쪽에서 시작된 설레는 봄소식",
+      "4": "흩날리는 벚꽃잎과 봄날의 나들이",
+      "5": "초록이 짙어지는 가정의 달 이야기",
+      "6": "초여름의 산들바람과 푸른 일상",
+      "7": "장마 너머 반짝이는 여름 바다",
+      "8": "한여름 우리가 다시 만난 소중한 순간",
+      "9": "선선해진 저녁 공기와 노을빛 산책",
+      "10": "깊어가는 단풍과 가을날의 소풍",
+      "11": "은빛 억새와 다가오는 겨울 준비",
+      "12": "일 년의 끝에서 돌아보는 우리의 계절"
+    },
+    "tocHeaderLeft": "우리 가족 사진첩 목차 · 1월~12월 하이라이트",
+    "tocHeaderRight": "2026년 연간 가족사",
+    "tocSubTitle": "연간 가족사 화보집 · 사계절 목차",
+    "tocTitle": "멀리 떨어져 있어도 같은 계절을 건너는 우리들의 기록",
+    "annualReviewNote": "각자의 도시에서 매달 사진과 안부를 나누며 함께 걸어온 2026년 우리 가족의 사계절 기록입니다.",
+    "fontScales": {},
+    "publishedBooks": [
+      {
+        "id": "book-2026-annual",
+        "title": "2026년 우리 가족 사계절 사진첩",
+        "subtitle": "온 가족이 일 년 동안 함께 모은 사계절 추억 기록",
+        "periodType": "annual",
+        "periodLabel": "2026년 연간",
+        "createdAt": "2026.11.01",
+        "status": "보관됨",
+        "bindingType": "양장 하드커버"
+      }
+    ]
   },
   "photos": [
     {
@@ -103,9 +125,9 @@
       },
       "isFavorite": true,
       "comments": [],
-      "cropX": 56,
-      "cropY": 61.8,
-      "cropZoom": 1
+      "cropX": 50,
+      "cropY": 50,
+      "cropZoom": 1.08
     },
     {
       "id": "photo-2026-04-03",
@@ -526,5 +548,5 @@
       "comments": []
     }
   ],
-  "updatedAt": "2026-11-03T09:40:02.110Z"
+  "updatedAt": "2026-11-05T04:48:30.289Z"
 }

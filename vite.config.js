@@ -6,5 +6,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     middlewareMode: true,
+    watch: {
+      ignored: ['**/server/storage/**', '**/storage/**', '**/*.db.json', '**/*.config.json'],
+    },
   },
 });

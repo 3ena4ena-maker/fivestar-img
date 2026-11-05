@@ -389,10 +389,40 @@ async function startServer() {
     res.json({ photo, allPhotos: db.photos });
   });
 
-  // POST /api/members — Add, update, or reorder family members
+  // POST /api/members — Add, update, reorder, or replace family members
   app.post('/api/members', async (req, res) => {
     const db = loadLocalDb();
-    const { id, name, role, city, color, badgeBg, avatar, avatarImage, isChildProfile, orderedIds } = req.body;
+    const {
+      id,
+      name,
+      role,
+      city,
+      color,
+      badgeBg,
+      avatar,
+      avatarImage,
+      isChildProfile,
+      orderedIds,
+      replaceMembers,
+    } = req.body;
+
+    // Support replacing the entire family member list on explicit Save
+    if (Array.isArray(replaceMembers) && replaceMembers.length > 0) {
+      db.members = replaceMembers.map((m, idx) => {
+        const cleanName = (m.name || '가족').trim();
+        const cleanCity = (m.city || '부산').trim();
+        return {
+          ...m,
+          id: m.id || `member-${Date.now()}-${idx}`,
+          name: cleanName,
+          city: cleanCity,
+          role: (m.role || cleanCity).trim(),
+          avatar: m.avatar ? m.avatar.trim().slice(0, 2) : cleanName.slice(0, 2),
+        };
+      });
+      await persistState(db);
+      return res.json({ members: db.members });
+    }
 
     // Support reordering the entire family member list
     if (Array.isArray(orderedIds) && orderedIds.length > 0) {
@@ -592,6 +622,9 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: { server: httpServer },
+        watch: {
+          ignored: ['**/server/storage/**', '**/storage/**', '**/*.db.json', '**/*.config.json'],
+        },
       },
       appType: 'spa',
     });

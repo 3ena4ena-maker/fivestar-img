@@ -52,6 +52,7 @@ export default function MyPageView({
   onReorderMembers,
   onAddMember,
   onDeleteMember,
+  onSaveMembersList,
   onUpdateBookSettings,
   showToast,
 }) {
@@ -76,17 +77,9 @@ export default function MyPageView({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const avatarFileInputRef = useRef(null);
 
-  // 대표 가족 (대표 결제자) 기준
-  const [billingPlan, setBillingPlan] = useState(
-    bookSettings.billingPlan || 'annual'
-  );
-  const [paymentMethod, setPaymentMethod] = useState(
-    bookSettings.paymentMethod || PAYMENT_METHODS[0]
-  );
   const [payerMemberId, setPayerMemberId] = useState(
     bookSettings.payerMemberId || 'member-first'
   );
-  const [editingPayment, setEditingPayment] = useState(false);
 
   // 우리 가족 사진첩 이름 설정 (대표 가족 마이페이지 전용)
   const [familyTitleInput, setFamilyTitleInput] = useState(
@@ -103,8 +96,15 @@ export default function MyPageView({
   );
   const [savedTeamBanner, setSavedTeamBanner] = useState(false);
 
-  // 가족 초대 & 구성원 명단 관리 상태
+  // 가족 초대 & 구성원 명단 관리 상태 (저장 버튼을 눌러야 최종 저장됨)
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [draftMembers, setDraftMembers] = useState(() =>
+    Array.isArray(members) ? [...members] : []
+  );
+  const [isMembersDirty, setIsMembersDirty] = useState(false);
+  const [isSavingMembers, setIsSavingMembers] = useState(false);
+  const [savedMembersBanner, setSavedMembersBanner] = useState(false);
+
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [rowName, setRowName] = useState('');
   const [rowCity, setRowCity] = useState('');
@@ -112,7 +112,11 @@ export default function MyPageView({
   const [newCity, setNewCity] = useState('');
   const [newColorIdx, setNewColorIdx] = useState(0);
 
-  const [trackingOrder, setTrackingOrder] = useState(null);
+  useEffect(() => {
+    if (!isMembersDirty) {
+      setDraftMembers(Array.isArray(members) ? [...members] : []);
+    }
+  }, [members, isMembersDirty]);
 
   useEffect(() => {
     setMyName(activeMember.name || '');
@@ -220,82 +224,106 @@ export default function MyPageView({
     setRowCity(m.city || '');
   };
 
-  const handleSaveRowEdit = async (memberId) => {
+  const handleSaveRowEdit = (memberId) => {
     if (!rowName.trim()) return;
     const cleanCity = rowCity.trim() || '부산';
-    await onUpdateMember(memberId, {
-      id: memberId,
-      name: rowName.trim(),
-      city: cleanCity,
-      role: cleanCity,
-    });
+    setDraftMembers((prev) =>
+      prev.map((m) =>
+        m.id === memberId
+          ? {
+              ...m,
+              name: rowName.trim(),
+              city: cleanCity,
+              role: cleanCity,
+              avatar: rowName.trim().slice(0, 2),
+            }
+          : m
+      )
+    );
     setEditingMemberId(null);
+    setIsMembersDirty(true);
   };
 
   const handleMoveByOffset = (index, delta) => {
     const targetIdx = index + delta;
-    if (targetIdx < 0 || targetIdx >= members.length) return;
-    const reordered = [...members];
+    if (targetIdx < 0 || targetIdx >= draftMembers.length) return;
+    const reordered = [...draftMembers];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(targetIdx, 0, moved);
-    if (onReorderMembers) {
-      onReorderMembers(reordered);
-    }
+    setDraftMembers(reordered);
+    setIsMembersDirty(true);
   };
 
-  const handleAddMemberSubmit = async (e) => {
+  const handleRemoveDraftMember = (e, memberId) => {
     e.preventDefault();
-    if (!newName.trim() || !onAddMember) return;
+    e.stopPropagation();
+    if (draftMembers.length <= 1) return;
+    setDraftMembers((prev) => prev.filter((m) => m.id !== memberId));
+    setIsMembersDirty(true);
+  };
+
+  const handleAddMemberSubmit = (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
     const pick = COLOR_PRESETS[newColorIdx % COLOR_PRESETS.length];
     const cleanCity = newCity.trim() || '부산';
-    await onAddMember({
+    const newDraft = {
+      id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       name: newName.trim(),
       city: cleanCity,
       role: cleanCity,
       color: pick.color,
       badgeBg: pick.badgeBg,
       avatar: newName.trim().slice(0, 2),
-    });
+    };
+    setDraftMembers((prev) => [...prev, newDraft]);
+    setIsMembersDirty(true);
     setNewName('');
     setNewCity('');
     setNewColorIdx((prev) => (prev + 1) % COLOR_PRESETS.length);
   };
 
-  const handleSaveSubscription = async (e) => {
-    e.preventDefault();
-    const payerObj = members.find((m) => m.id === payerMemberId) || activeMember;
-    await onUpdateBookSettings({
-      billingPlan,
-      paymentMethod,
-      payerMemberId,
-      subscriptionOwner: `${payerObj.name}`,
-    });
-    setEditingPayment(false);
-    if (showToast) {
-      showToast('구독 및 결제 수단 정보가 저장되었습니다.');
+  const handleCommitMembersSave = async () => {
+    if (draftMembers.length === 0) return;
+    setIsSavingMembers(true);
+    try {
+      // 만약 행 수정 중이던 항목이 있다면 함께 반영
+      let finalMembers = [...draftMembers];
+      if (editingMemberId && rowName.trim()) {
+        const cleanCity = rowCity.trim() || '부산';
+        finalMembers = finalMembers.map((m) =>
+          m.id === editingMemberId
+            ? {
+                ...m,
+                name: rowName.trim(),
+                city: cleanCity,
+                role: cleanCity,
+                avatar: rowName.trim().slice(0, 2),
+              }
+            : m
+        );
+        setEditingMemberId(null);
+      }
+
+      if (onSaveMembersList) {
+        await onSaveMembersList(finalMembers);
+      } else if (onReorderMembers) {
+        await onReorderMembers(finalMembers);
+      }
+      setDraftMembers(finalMembers);
+      setIsMembersDirty(false);
+      setSavedMembersBanner(true);
+      setTimeout(() => setSavedMembersBanner(false), 3000);
+    } finally {
+      setIsSavingMembers(false);
     }
   };
 
-  const printOrders =
-    Array.isArray(bookSettings.printOrders) && bookSettings.printOrders.length > 0
-      ? bookSettings.printOrders
-      : [
-          {
-            id: 'order-sample-2026',
-            bookTitle: '2026년 봄·여름 가족 사진첩',
-            bindingLabel: '양장 하드커버',
-            quantity: 2,
-            totalPrice: 76000,
-            recipientName: '종록 아빠 · 영선 엄마',
-            recipientAddress: '부산 본가',
-            orderedBy: '막둥이 세나',
-            orderedAt: '2026.10.28',
-            status: '발송 완료',
-            stepIndex: 2,
-            courier: '우체국택배',
-            trackingNumber: '6894-2026-1104',
-          },
-        ];
+  const handleCancelMembersChanges = () => {
+    setDraftMembers(Array.isArray(members) ? [...members] : []);
+    setEditingMemberId(null);
+    setIsMembersDirty(false);
+  };
 
   const myPhotoCount = photos.filter((p) => p.memberId === activeMember.id).length;
   const payerMember = members.find((m) => m.id === payerMemberId) || activeMember;
@@ -566,19 +594,33 @@ export default function MyPageView({
             </button>
           </section>
 
-          {/* 4. 가족 구성원 명단 */}
+          {/* 4. 가족 구성원 명단 (수정·삭제·추가 후 [구성원 명단 저장하기] 버튼을 눌러야 저장됨) */}
           <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-[#B64E2E]">
-                가족 구성원 명단 ({members.length}명)
-              </h3>
-              <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
-                함께 사진첩을 꾸미는 가족 프로필과 호칭을 관리합니다.
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-[#B64E2E]">
+                  가족 구성원 명단 ({draftMembers.length}명)
+                </h3>
+                <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
+                  구성원 추가·수정·삭제 후 아래 [구성원 명단 저장하기] 버튼을 눌러야 반영됩니다.
+                </p>
+              </div>
+              {isMembersDirty && (
+                <span className="px-3 py-1 rounded-full bg-[#B64E2E]/15 text-[#B64E2E] text-xs font-bold">
+                  저장 전 변경사항 있음
+                </span>
+              )}
             </div>
 
+            {savedMembersBanner && (
+              <div className="p-3.5 bg-[#FBF8F3] rounded-2xl text-[#B64E2E] text-sm font-bold flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>가족 구성원 명단이 저장되었습니다.</span>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {members.map((m, index) => {
+              {draftMembers.map((m, index) => {
                 const isEditing = editingMemberId === m.id;
                 const photoCount = photos.filter((p) => p.memberId === m.id).length;
 
@@ -618,7 +660,7 @@ export default function MyPageView({
                             onClick={() => handleSaveRowEdit(m.id)}
                             className="px-4 py-1.5 bg-[#B64E2E] text-[#FBF8F3] rounded-full text-xs font-bold cursor-pointer"
                           >
-                            저장
+                            확인
                           </button>
                         </div>
                       </div>
@@ -679,7 +721,7 @@ export default function MyPageView({
                           </button>
                           <button
                             type="button"
-                            disabled={index === members.length - 1}
+                            disabled={index === draftMembers.length - 1}
                             onClick={() => handleMoveByOffset(index, 1)}
                             className="p-2 text-[#8A442B] hover:text-[#B64E2E] disabled:opacity-25 cursor-pointer"
                             title="아래로"
@@ -694,12 +736,12 @@ export default function MyPageView({
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          {members.length > 1 && onDeleteMember && (
+                          {draftMembers.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => onDeleteMember(m.id)}
+                              onClick={(e) => handleRemoveDraftMember(e, m.id)}
                               className="p-2 text-[#A69B80] hover:text-[#B64E2E] cursor-pointer"
-                              title="삭제"
+                              title="명단에서 제외 (저장 시 최종 반영)"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -712,7 +754,7 @@ export default function MyPageView({
               })}
             </div>
 
-            {/* 새 가족 구성원 추가 */}
+            {/* 새 가족 구성원 추가 (목록에 추가) */}
             <form
               onSubmit={handleAddMemberSubmit}
               className="bg-[#FBF8F3] rounded-2xl p-4 space-y-3"
@@ -738,185 +780,35 @@ export default function MyPageView({
               </div>
               <button
                 type="submit"
-                className="w-full py-3 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 border border-[#B64E2E]/50 hover:bg-[#F2EDE3] text-[#8A442B] rounded-full text-sm font-bold flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>가족 명단에 추가 +</span>
+                <span>명단 목록에 추가 +</span>
               </button>
             </form>
-          </section>
 
-          {/* 5. 정기 구독 관리 */}
-          <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-[#B64E2E]">정기 구독 관리</h3>
-                <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
-                  대표 1인 결제로 온 가족 {members.length}명이 함께 이용 중입니다.
-                </p>
-              </div>
+            {/* 최종 구성원 명단 저장하기 버튼 */}
+            <div className="flex items-center gap-2 pt-1">
+              {isMembersDirty && (
+                <button
+                  type="button"
+                  onClick={handleCancelMembersChanges}
+                  className="px-5 py-3.5 rounded-full border border-[#B64E2E]/45 text-[#8A442B] hover:bg-[#FBF8F3] text-sm font-bold cursor-pointer shrink-0"
+                >
+                  되돌리기
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setEditingPayment((prev) => !prev)}
-                className="px-4 py-1.5 rounded-full border border-[#B64E2E]/45 text-xs sm:text-sm font-bold text-[#8A442B] cursor-pointer"
+                disabled={isSavingMembers}
+                onClick={handleCommitMembersSave}
+                className="flex-1 py-3.5 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer"
               >
-                {editingPayment ? '닫기' : '변경'}
+                <Check className="w-4 h-4" />
+                <span>
+                  {isSavingMembers ? '저장 중...' : '구성원 명단 저장하기'}
+                </span>
               </button>
-            </div>
-
-            <div className="bg-[#FBF8F3] rounded-2xl p-4 space-y-2.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#8A442B]">대표 가족 (결제자)</span>
-                <strong className="text-[#5E3422]">
-                  {payerMember.name} ({payerMember.city})
-                </strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#8A442B]">이용 플랜</span>
-                <strong className="text-[#5E3422]">
-                  {billingPlan === 'annual' ? '연간 구독 (년 99,000원)' : '월간 구독 (월 9,900원)'}
-                </strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#8A442B]">결제 수단</span>
-                <strong className="text-[#5E3422]">{paymentMethod}</strong>
-              </div>
-            </div>
-
-            {editingPayment && (
-              <form
-                onSubmit={handleSaveSubscription}
-                className="bg-[#FBF8F3] rounded-2xl p-4 space-y-3"
-              >
-                <div>
-                  <label className="block text-xs font-bold text-[#8A442B] mb-1">
-                    대표 가족 (결제자)
-                  </label>
-                  <select
-                    value={payerMemberId}
-                    onChange={(e) => setPayerMemberId(e.target.value)}
-                    className="w-full bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm font-bold text-[#5E3422]"
-                  >
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.city})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8A442B] mb-1">
-                    결제 주기
-                  </label>
-                  <select
-                    value={billingPlan}
-                    onChange={(e) => setBillingPlan(e.target.value)}
-                    className="w-full bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm font-bold text-[#5E3422]"
-                  >
-                    <option value="annual">연간 정기구독 (99,000원)</option>
-                    <option value="monthly">월간 정기구독 (9,900원)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8A442B] mb-1">
-                    결제 수단
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full bg-[#F2EDE3] rounded-xl px-3.5 py-2.5 text-sm font-bold text-[#5E3422]"
-                  >
-                    {PAYMENT_METHODS.map((pm) => (
-                      <option key={pm} value={pm}>
-                        {pm}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-[#B64E2E] hover:bg-[#B04C2E] text-[#FBF8F3] rounded-full text-sm font-bold cursor-pointer"
-                >
-                  저장하기
-                </button>
-              </form>
-            )}
-          </section>
-
-          {/* 6. 사진첩 제작 및 배송 조회 */}
-          <section className="bg-[#F2EDE3] rounded-3xl p-5 sm:p-7 space-y-4">
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-[#B64E2E]">
-                사진첩 제작 · 배송 내역 ({printOrders.length}건)
-              </h3>
-            </div>
-
-            <div className="space-y-3">
-              {printOrders.map((ord) => {
-                const stepIdx =
-                  typeof ord.stepIndex === 'number'
-                    ? ord.stepIndex
-                    : Math.max(0, ORDER_STEPS.indexOf(ord.status));
-
-                return (
-                  <div
-                    key={ord.id}
-                    className="bg-[#FBF8F3] rounded-2xl p-4 space-y-3.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="text-sm sm:text-base font-bold text-[#5E3422]">
-                          {ord.bookTitle}
-                        </h4>
-                        <p className="text-xs sm:text-sm text-[#8A442B] mt-0.5">
-                          {ord.bindingLabel} · {ord.quantity}권 · {ord.recipientName}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setTrackingOrder(trackingOrder?.id === ord.id ? null : ord)
-                        }
-                        className="px-3.5 py-1.5 rounded-full border border-[#B64E2E]/45 text-xs font-bold text-[#8A442B] shrink-0 cursor-pointer"
-                      >
-                        배송 조회
-                      </button>
-                    </div>
-
-                    {/* 4단계 프로그레스 */}
-                    <div className="grid grid-cols-4 gap-2">
-                      {ORDER_STEPS.map((label, idx) => {
-                        const done = idx <= stepIdx;
-                        return (
-                          <div key={label} className="space-y-1">
-                            <div
-                              className={`h-1.5 rounded-full ${
-                                done ? 'bg-[#B64E2E]' : 'bg-[#CFC5A8]'
-                              }`}
-                            />
-                            <div
-                              className={`text-xs font-bold text-center ${
-                                done ? 'text-[#8A442B]' : 'text-[#A69B80]'
-                              }`}
-                            >
-                              {label}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {trackingOrder?.id === ord.id && (
-                      <div className="pt-2.5 text-xs sm:text-sm text-[#8A442B] space-y-1">
-                        <div className="font-bold text-[#5E3422]">
-                          {ord.courier || '우체국택배'} · {ord.trackingNumber || '6894-2026-1104'}
-                        </div>
-                        <div>받는 곳: {ord.recipientAddress}</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           </section>
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { MapPin, Shuffle, Move } from 'lucide-react';
 import {
   formatEditorialDate,
@@ -81,7 +81,57 @@ function buildAdaptiveRows(photos, layoutTemplate) {
   return sliceByCounts(map[n] || [3, 3, 4]);
 }
 
-export default function BookPageRenderer({
+const BASE_PAGE_WIDTH = 460;
+const BASE_PAGE_HEIGHT = 634.8; // 460 * 1.38
+
+export default function BookPageRenderer(props) {
+  const outerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+
+    const updateScale = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 10 && h > 10) {
+        const nextScale = Math.min(w / BASE_PAGE_WIDTH, h / BASE_PAGE_HEIGHT);
+        setScale(nextScale);
+      } else if (w > 10) {
+        setScale(w / BASE_PAGE_WIDTH);
+      }
+    };
+
+    updateScale();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateScale);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  if (!props.page) return null;
+
+  return (
+    <div ref={outerRef} className="w-full h-full relative overflow-hidden">
+      <div
+        style={{
+          width: `${BASE_PAGE_WIDTH}px`,
+          height: `${BASE_PAGE_HEIGHT}px`,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+        }}
+      >
+        <BookPageCanvas {...props} />
+      </div>
+    </div>
+  );
+}
+
+function BookPageCanvas({
   page,
   members = [],
   bookSettings = {},
@@ -320,6 +370,67 @@ export default function BookPageRenderer({
         ? bookSettings.subtitle
         : '온 가족이 함께 모으는 소중한 일상 기록';
     const yearNumber = bookSettings.year || 2026;
+
+    // =========================================================================
+    // [스타일 0] 직접 만든 표지 올리기 (내 기기 표지 이미지 전체 캔버스 + 드래그 크기·위치 조절)
+    // =========================================================================
+    if (coverLayout === 'custom-upload') {
+      const showOverlayText = Boolean(bookSettings.customCoverShowText);
+      return (
+        <div
+          style={{ backgroundColor: coverBgColor, color: textPrimary }}
+          className={`w-full h-full relative overflow-hidden select-none ${spineClass}`}
+        >
+          <div className="w-full h-full">
+            {renderMainCoverPhoto(
+              'w-full h-full',
+              showOverlayText ? (
+                <div className="absolute inset-0 flex flex-col justify-between p-6 sm:p-8 pointer-events-none bg-gradient-to-b from-black/35 via-transparent to-black/55 text-[#FAF9F6]">
+                  <div className="flex items-start justify-between text-[9px] tracking-[0.18em] uppercase text-white/85 gap-2">
+                    <span
+                      style={scaleStyle('coverHeaderLeft', 9)}
+                      className="whitespace-pre-line max-w-[50%]"
+                    >
+                      {topLeftText}
+                    </span>
+                    <span
+                      style={scaleStyle('coverHeaderRight', 9)}
+                      className="whitespace-pre-line max-w-[48%] text-right"
+                    >
+                      {topRightText}
+                    </span>
+                  </div>
+                  <div>
+                    <h1
+                      style={scaleStyle('coverTitle', 32)}
+                      className="font-serif-kr text-2xl sm:text-3xl font-bold tracking-tight leading-snug drop-shadow-sm whitespace-pre-line"
+                    >
+                      {displayFamilyTitle}
+                    </h1>
+                    {displayKoreanTitle && (
+                      <p
+                        style={scaleStyle('coverKoreanTitle', 15)}
+                        className="mt-1 font-serif-kr text-sm sm:text-base font-medium text-white/95 whitespace-pre-line"
+                      >
+                        {displayKoreanTitle}
+                      </p>
+                    )}
+                    {displaySubtitle && (
+                      <p
+                        style={scaleStyle('coverSubtitle', 11)}
+                        className="mt-1.5 text-[11px] text-white/80 whitespace-pre-line"
+                      >
+                        {displaySubtitle}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : null
+            )}
+          </div>
+        </div>
+      );
+    }
 
     // =========================================================================
     // [스타일 1] 빅 세리프 매거진형 (MAGZ 스타일 — 초대형 마스트헤드 + 중앙 사진 + 하단 사각 배지)
@@ -1440,56 +1551,58 @@ export default function BookPageRenderer({
 
     return (
       <div
-        className={`w-full h-full flex flex-col p-6 sm:p-8 relative ${paperClass} ${spineClass}`}
+        className={`w-full h-full flex flex-col justify-between p-6 relative overflow-hidden ${paperClass} ${spineClass}`}
       >
-        {renderRunningHeader(
-          tocHeaderLeft,
-          tocHeaderRight,
-          'tocHeaderLeft',
-          'tocHeaderRight'
-        )}
+        <div className="shrink-0">
+          {renderRunningHeader(
+            tocHeaderLeft,
+            tocHeaderRight,
+            'tocHeaderLeft',
+            'tocHeaderRight'
+          )}
 
-        <div className="mb-1.5">
-          {tocSubTitle && (
-            <span
-              style={scaleStyle('tocSubTitle', 11)}
-              className="text-[11px] font-bold text-[#8C5A3C] whitespace-pre-line block"
-            >
-              {tocSubTitle}
-            </span>
-          )}
-          {tocTitle && (
-            <h2
-              style={scaleStyle('tocTitle', 20)}
-              className="mt-0.5 font-editorial-ko text-lg sm:text-xl font-bold text-[#141413] leading-snug whitespace-pre-line"
-            >
-              {tocTitle}
-            </h2>
-          )}
-          {tocDescription && (
-            <p
-              style={scaleStyle('tocDesc', 12)}
-              className="mt-1 font-editorial-ko text-xs text-[#4A4944] leading-[1.55] whitespace-pre-line"
-            >
-              {tocDescription}
-            </p>
-          )}
+          <div className="mb-1">
+            {tocSubTitle && (
+              <span
+                style={scaleStyle('tocSubTitle', 10.5)}
+                className="text-[10.5px] font-bold text-[#8C5A3C] whitespace-pre-line block leading-tight"
+              >
+                {tocSubTitle}
+              </span>
+            )}
+            {tocTitle && (
+              <h2
+                style={scaleStyle('tocTitle', 18)}
+                className="mt-0.5 font-editorial-ko text-lg font-bold text-[#141413] leading-snug whitespace-pre-line"
+              >
+                {tocTitle}
+              </h2>
+            )}
+            {tocDescription && (
+              <p
+                style={scaleStyle('tocDesc', 11)}
+                className="mt-0.5 font-editorial-ko text-[11px] text-[#4A4944] leading-snug whitespace-pre-line"
+              >
+                {tocDescription}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* 1월 ~ 12월 하이라이트 글귀 목차 (1열 구성) */}
-        <div className="my-1.5 py-2 border-y border-[#141413]/12 flex-1 min-h-0 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-bold text-[#8C5A3C]">
+        {/* 1월 ~ 12월 하이라이트 글귀 목차 (1열 구성 · 화면 높이에 자동 맞춤) */}
+        <div className="my-1 py-1.5 border-y border-[#141413]/12 flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div className="shrink-0 flex items-center justify-between mb-1">
+            <span className="text-[10.5px] font-bold text-[#8C5A3C]">
               1월 ~ 12월 이달의 하이라이트
             </span>
             {!isPrint && onUpdateMonthlyHighlight && (
-              <span className="text-[10px] text-[#8A442B]">
+              <span className="text-[9.5px] text-[#8A442B]">
                 글귀를 눌러 바로 수정할 수 있습니다
               </span>
             )}
           </div>
 
-          <div className="flex-1 flex flex-col justify-between divide-y divide-[#141413]/8">
+          <div className="flex-1 min-h-0 grid grid-rows-12 divide-y divide-[#141413]/8">
             {Array.from({ length: 12 }, (_, idx) => idx + 1).map((m) => {
               const phrase =
                 monthlyHighlights[m] !== undefined
@@ -1499,24 +1612,24 @@ export default function BookPageRenderer({
               return (
                 <div
                   key={m}
-                  className="flex items-start gap-3 py-0.5"
+                  className="flex items-center gap-2.5 min-h-0 overflow-hidden"
                 >
-                  <span className="font-mono-meta text-[11px] font-bold text-[#B64E2E] shrink-0 w-9 pt-0.5">
+                  <span className="font-mono-meta text-[10.5px] font-bold text-[#B64E2E] shrink-0 w-8">
                     {String(m).padStart(2, '0')}월
                   </span>
                   {!isPrint && onUpdateMonthlyHighlight ? (
-                    <textarea
-                      rows={1}
+                    <input
+                      type="text"
                       value={phrase}
                       onChange={(e) => onUpdateMonthlyHighlight(m, e.target.value)}
                       placeholder={`${m}월 하이라이트 글귀 입력`}
-                      style={scaleStyle('tocHighlights', 12)}
-                      className="w-full bg-transparent font-editorial-ko text-xs text-[#141413] focus:outline-none focus:bg-[#F2EDE3]/70 px-1 rounded-xs resize-none leading-snug"
+                      style={scaleStyle('tocHighlights', 11)}
+                      className="w-full bg-transparent font-editorial-ko text-[11px] text-[#141413] focus:outline-none focus:bg-[#F2EDE3]/70 px-1 rounded-xs leading-tight truncate"
                     />
                   ) : (
                     <span
-                      style={scaleStyle('tocHighlights', 12)}
-                      className="font-editorial-ko text-xs text-[#141413] whitespace-pre-line leading-snug"
+                      style={scaleStyle('tocHighlights', 11)}
+                      className="font-editorial-ko text-[11px] text-[#141413] truncate leading-tight"
                     >
                       {phrase || DEFAULT_MONTHLY_HIGHLIGHTS[m]}
                     </span>
@@ -1527,27 +1640,29 @@ export default function BookPageRenderer({
           </div>
         </div>
 
-        {/* 참여 가족 명단 (동그라미 표시 및 수록 사진 개수 제거) */}
-        <div className="mt-1">
-          <div className="text-[11px] font-bold text-[#5A5852] mb-1">
+        {/* 참여 가족 명단 (하단 고정 영역 · 하이라이트와 절대 겹치지 않음) */}
+        <div className="shrink-0 pt-1">
+          <div className="text-[10.5px] font-bold text-[#5A5852] mb-1">
             참여 가족 명단
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 border-t border-[#141413]/10 pt-1.5">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 border-t border-[#141413]/10 pt-1">
             {page.memberStats.map((m, idx) => (
-              <div key={m.id} className="flex items-center gap-1.5 text-xs truncate">
+              <div key={m.id} className="flex items-center gap-1 text-[11px] truncate">
                 <span className="font-bold text-[10px] text-[#8C5A3C] shrink-0">
                   {idx + 1}
                 </span>
                 <span className="font-bold text-[#141413] truncate">{m.name}</span>
                 {m.city && (
-                  <span className="text-[11px] text-[#5A5852] truncate">({m.city})</span>
+                  <span className="text-[10px] text-[#5A5852] truncate">({m.city})</span>
                 )}
               </div>
             ))}
           </div>
         </div>
 
-        {renderRunningFooter()}
+        <div className="shrink-0">
+          {renderRunningFooter()}
+        </div>
       </div>
     );
   }

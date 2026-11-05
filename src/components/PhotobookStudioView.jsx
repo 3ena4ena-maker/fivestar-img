@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Download,
   Printer,
   Loader2,
@@ -75,6 +77,12 @@ const COVER_LAYOUT_OPTIONS = [
     label: '클래식 화보집형',
     desc: '단정한 상단 헤더와 중앙 화보 프레임',
     tag: '단행본',
+  },
+  {
+    id: 'custom-upload',
+    label: '직접 만든 표지 올리기 +',
+    desc: '내 기기에서 표지 사진 등록 · 드래그 크기 조절',
+    tag: '직접 등록',
   },
 ];
 
@@ -163,6 +171,8 @@ export default function PhotobookStudioView({
   const [showCoverPhotoPicker, setShowCoverPhotoPicker] = useState(false);
   const [showCoverEditor, setShowCoverEditor] = useState(true);
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
+  // 모바일 전용: 01 / 02 / 03 섹션 열기·닫기 아코디언 상태 (웹 lg 이상에서는 항상 모두 펼쳐짐)
+  const [mobileOpenSection, setMobileOpenSection] = useState(null);
 
   const [periodType, setPeriodType] = useState('annual');
   const [selectedYear, setSelectedYear] = useState(bookSettings.year || 2026);
@@ -250,6 +260,9 @@ export default function PhotobookStudioView({
   const [coverShowPhoto, setCoverShowPhoto] = useState(
     bookSettings.coverShowPhoto !== false
   );
+  const [customCoverShowText, setCustomCoverShowText] = useState(
+    Boolean(bookSettings.customCoverShowText)
+  );
   const [coverHeaderLeftInput, setCoverHeaderLeftInput] = useState(
     bookSettings.coverHeaderLeft !== undefined
       ? bookSettings.coverHeaderLeft
@@ -300,6 +313,9 @@ export default function PhotobookStudioView({
     if (bookSettings.coverBgColor) setCoverBgColor(bookSettings.coverBgColor);
     if (bookSettings.coverShowPhoto !== undefined) {
       setCoverShowPhoto(bookSettings.coverShowPhoto !== false);
+    }
+    if (bookSettings.customCoverShowText !== undefined) {
+      setCustomCoverShowText(Boolean(bookSettings.customCoverShowText));
     }
     if (bookSettings.coverHeaderLeft !== undefined) {
       setCoverHeaderLeftInput(bookSettings.coverHeaderLeft);
@@ -362,6 +378,7 @@ export default function PhotobookStudioView({
         setCoverShowPhoto(true);
         setCurrentIndex(0);
         setShowCoverPhotoPicker(false);
+        setIsRepositionMode(true);
         if (onUpdateBookSettings) {
           onUpdateBookSettings({
             coverPhotoUrl: dataUrl,
@@ -374,6 +391,7 @@ export default function PhotobookStudioView({
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const selectedProduct =
@@ -449,6 +467,7 @@ export default function PhotobookStudioView({
       coverLayout,
       coverBgColor,
       coverShowPhoto,
+      customCoverShowText,
       coverHeaderLeft: coverHeaderLeftInput,
       coverHeaderRight: coverHeaderRightInput,
       coverPhotoUrl: customCoverPhotoUrl || bookSettings.coverPhotoUrl,
@@ -467,6 +486,7 @@ export default function PhotobookStudioView({
     coverLayout,
     coverBgColor,
     coverShowPhoto,
+    customCoverShowText,
     coverHeaderLeftInput,
     coverHeaderRightInput,
     customCoverPhotoUrl,
@@ -522,7 +542,13 @@ export default function PhotobookStudioView({
   };
 
   // 상단 리모컨 바에서 확대/축소 · 상하좌우 이동 버튼 클릭 시 실행
-  const handleToolbarAdjustPosition = (deltaX = 0, deltaY = 0, deltaZoom = 0, isReset = false) => {
+  const handleToolbarAdjustPosition = (
+    deltaX = 0,
+    deltaY = 0,
+    deltaZoom = 0,
+    isReset = false,
+    directZoom = null
+  ) => {
     const clamp = (val, min, max) => Math.min(max, Math.max(min, val));
     const currentPage = pages[currentIndex];
     if (!currentPage) return;
@@ -532,7 +558,9 @@ export default function PhotobookStudioView({
       const nextY = isReset ? 50 : clamp(Number((coverCropY + deltaY).toFixed(1)), 0, 100);
       const nextZoom = isReset
         ? 1
-        : clamp(Number((coverCropZoom + deltaZoom).toFixed(2)), 1, 3.0);
+        : typeof directZoom === 'number'
+        ? clamp(Number(directZoom.toFixed(2)), 0.4, 3.0)
+        : clamp(Number((coverCropZoom + deltaZoom).toFixed(2)), 0.4, 3.0);
 
       const targetId =
         currentPage.bestGroupPhoto?.id || currentPage.coverPhoto?.id || '__cover_photo__';
@@ -557,7 +585,11 @@ export default function PhotobookStudioView({
       handleStudioUpdatePhotoPosition(target.id, {
         cropX: isReset ? 50 : clamp(Number((curX + deltaX).toFixed(1)), 0, 100),
         cropY: isReset ? 50 : clamp(Number((curY + deltaY).toFixed(1)), 0, 100),
-        cropZoom: isReset ? 1 : clamp(Number((curZ + deltaZoom).toFixed(2)), 1, 3.0),
+        cropZoom: isReset
+          ? 1
+          : typeof directZoom === 'number'
+          ? clamp(Number(directZoom.toFixed(2)), 0.4, 3.0)
+          : clamp(Number((curZ + deltaZoom).toFixed(2)), 0.4, 3.0),
       });
     }
   };
@@ -943,7 +975,7 @@ export default function PhotobookStudioView({
             <div className="bg-[#F2EDE3] p-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-[11px] text-[#8A442B]">
                 <span className="font-bold text-[#5E3422]">
-                  사진을 직접 드래그하거나 아래 버튼으로 확대·상하좌우 이동하세요
+                  사진 네 모서리를 드래그해 크기를 조절하거나, 사진 중앙을 드래그해 위치를 이동하세요
                 </span>
                 <button
                   type="button"
@@ -960,7 +992,7 @@ export default function PhotobookStudioView({
                   <button
                     type="button"
                     onClick={() => handleToolbarAdjustPosition(-8, 0, 0, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
+                    className="px-2 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
                   >
                     <ArrowLeft className="w-3 h-3" />
                     <span>좌</span>
@@ -968,7 +1000,7 @@ export default function PhotobookStudioView({
                   <button
                     type="button"
                     onClick={() => handleToolbarAdjustPosition(8, 0, 0, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
+                    className="px-2 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
                   >
                     <span>우</span>
                     <ArrowRight className="w-3 h-3" />
@@ -976,7 +1008,7 @@ export default function PhotobookStudioView({
                   <button
                     type="button"
                     onClick={() => handleToolbarAdjustPosition(0, -8, 0, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
+                    className="px-2 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
                   >
                     <ArrowUp className="w-3 h-3" />
                     <span>상</span>
@@ -984,29 +1016,41 @@ export default function PhotobookStudioView({
                   <button
                     type="button"
                     onClick={() => handleToolbarAdjustPosition(0, 8, 0, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
+                    className="px-2 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
                   >
                     <ArrowDown className="w-3 h-3" />
                     <span>하</span>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => handleToolbarAdjustPosition(0, 0, -0.15, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
+                    onClick={() => handleToolbarAdjustPosition(0, 0, -0.1, false)}
+                    className="px-2 py-1 rounded-full bg-[#FBF8F3] hover:bg-[#B64E2E] hover:text-[#FBF8F3] text-xs font-bold text-[#5E3422] flex items-center gap-0.5 cursor-pointer"
                   >
                     <ZoomOut className="w-3 h-3" />
                     <span>축소</span>
                   </button>
-                  <span className="px-2 text-xs font-mono-meta font-bold text-[#8A442B]">
+                  <input
+                    type="range"
+                    min="0.4"
+                    max="3.0"
+                    step="0.02"
+                    value={coverCropZoom}
+                    onChange={(e) =>
+                      handleToolbarAdjustPosition(0, 0, 0, false, Number(e.target.value))
+                    }
+                    title="드래그하여 사진 크기 조절 (40% ~ 300%)"
+                    className="w-20 sm:w-28 accent-[#B64E2E] cursor-ew-resize"
+                  />
+                  <span className="px-1 text-xs font-mono-meta font-bold text-[#8A442B] min-w-[36px] text-center">
                     {Math.round(coverCropZoom * 100)}%
                   </span>
                   <button
                     type="button"
-                    onClick={() => handleToolbarAdjustPosition(0, 0, 0.15, false)}
-                    className="px-2.5 py-1 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-xs font-bold flex items-center gap-0.5 cursor-pointer"
+                    onClick={() => handleToolbarAdjustPosition(0, 0, 0.1, false)}
+                    className="px-2 py-1 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-xs font-bold flex items-center gap-0.5 cursor-pointer"
                   >
                     <ZoomIn className="w-3 h-3" />
                     <span>확대</span>
@@ -1070,10 +1114,10 @@ export default function PhotobookStudioView({
             </div>
           )}
 
-          {/* 책 페이지 뷰어 (한 화면 높이에 자동 맞춤) */}
+          {/* 책 페이지 뷰어 (모바일에서도 상단 01·02 아코디언과 한 화면에 함께 보이도록 높이 최적화, 웹은 기존 동일) */}
           {viewType === 'single' && pages.length > 0 && (
-            <div className="bg-[#F2EDE3] p-3 sm:p-4 flex justify-center items-center">
-              <div className="w-full max-w-[460px] lg:h-[calc(100vh-210px)] lg:min-h-[460px] lg:max-h-[680px] lg:w-auto aspect-[1/1.38] bg-[#FAF9F6] shadow-md overflow-hidden">
+            <div className="bg-[#F2EDE3] p-2.5 sm:p-4 flex justify-center items-center">
+              <div className="w-full max-w-[280px] sm:max-w-[460px] lg:h-[calc(100vh-210px)] lg:min-h-[460px] lg:max-h-[680px] lg:w-auto aspect-[1/1.38] bg-[#FAF9F6] shadow-md overflow-hidden">
                 <BookPageRenderer
                   page={pages[currentIndex]}
                   members={members}
@@ -1168,173 +1212,221 @@ export default function PhotobookStudioView({
         </section>
 
         {/* ===================================================================
-            우측(한 화면에 모든 설정이 들어오도록 컴팩트 구성 + 모든 문구 줄바꿈 지원)
+            우측(웹에서는 한 화면에 모두 펼쳐서 노출 / 모바일에서는 01·02·03을 열고 닫으며 아래 미리보기와 동시에 확인)
             - 목차(2쪽) 미리보기 중일 때: 03 / 목차 문구 · 1월~12월 하이라이트 섹션만 노출
             - 그 외 책자 미리보기 페이지일 때: 01, 02 섹션만 노출
         =================================================================== */}
-        <div className="lg:col-span-6 space-y-4 order-1 lg:order-2">
+        <div className="lg:col-span-6 space-y-2.5 lg:space-y-4 order-1 lg:order-2">
           {viewType === 'single' && pages[currentIndex]?.type === 'prologue' ? (
-            /* 3. 목차 상단 문구 및 1월~12월 하이라이트 글귀 간편 입력 (한 화면 구성) */
-            <section className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-base sm:text-lg font-medium text-[#B64E2E] tracking-tight">
-                    03 / 목차 문구 · 1월~12월 하이라이트 (Enter로 줄바꿈 가능)
+            /* 3. 목차 상단 문구 및 1월~12월 하이라이트 글귀 간편 입력 */
+            <section className="space-y-2 lg:space-y-3">
+              <div className="flex items-center justify-between gap-2 bg-[#F2EDE3] lg:bg-transparent px-3 py-2 lg:p-0 rounded-xl lg:rounded-none">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMobileOpenSection((prev) => (prev === '03' ? null : '03'))
+                  }
+                  className="flex items-center gap-1.5 text-left cursor-pointer lg:cursor-default flex-1"
+                >
+                  <h2 className="text-sm sm:text-lg font-medium text-[#B64E2E] tracking-tight">
+                    03 / 목차 문구 · 1월~12월 하이라이트
                   </h2>
-                </div>
+                  <span className="lg:hidden inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[10px] font-bold shrink-0">
+                    {mobileOpenSection === '03' ? (
+                      <>
+                        <span>닫기</span>
+                        <ChevronUp className="w-3 h-3" />
+                      </>
+                    ) : (
+                      <>
+                        <span>열기</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </>
+                    )}
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
                     setViewType('single');
                     setCurrentIndex(0);
                   }}
-                  className="px-3 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-medium text-[#8A442B] hover:border-[#B64E2E] shrink-0 cursor-pointer"
+                  className="px-2.5 py-1 rounded-full border border-[#B64E2E]/45 text-xs font-medium text-[#8A442B] hover:border-[#B64E2E] shrink-0 cursor-pointer"
                 >
                   표지(1쪽)로 이동
                 </button>
               </div>
 
-              {/* 목차 상단 문구 직접 수정 (모두 줄바꿈 지원 textarea + [가-][가+] 크기 조절) */}
-              <div className="bg-[#F2EDE3] p-3 space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
-                      <span>상단 왼쪽 문구</span>
-                      {renderFontScaleControl('tocHeaderLeft', 1)}
-                    </div>
-                    <textarea
-                      rows={1}
-                      value={tocHeaderLeft}
-                      onChange={(e) => {
-                        setTocHeaderLeft(e.target.value);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({ tocHeaderLeft: e.target.value });
-                        }
-                      }}
-                      placeholder="우리 가족 사진첩 목차"
-                      className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
-                      <span>상단 오른쪽 문구</span>
-                      {renderFontScaleControl('tocHeaderRight', 1)}
-                    </div>
-                    <textarea
-                      rows={1}
-                      value={tocHeaderRight}
-                      onChange={(e) => {
-                        setTocHeaderRight(e.target.value);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({ tocHeaderRight: e.target.value });
-                        }
-                      }}
-                      placeholder="2026년 연간 가족사"
-                      className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
-                      <span>목차 소제목</span>
-                      {renderFontScaleControl('tocSubTitle', 1)}
-                    </div>
-                    <textarea
-                      rows={1}
-                      value={tocSubTitle}
-                      onChange={(e) => {
-                        setTocSubTitle(e.target.value);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({ tocSubTitle: e.target.value });
-                        }
-                      }}
-                      placeholder="연간 가족사 화보집 · 사계절 목차"
-                      className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
-                      <span>목차 큰 제목 (Enter 줄바꿈)</span>
-                      {renderFontScaleControl('tocTitle', 1)}
-                    </div>
-                    <textarea
-                      rows={2}
-                      value={tocTitle}
-                      onChange={(e) => {
-                        setTocTitle(e.target.value);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({ tocTitle: e.target.value });
-                        }
-                      }}
-                      placeholder="멀리 떨어져 있어도 같은 계절을 건너는 우리들의 기록"
-                      className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs font-medium text-[#5E3422] resize-y leading-snug"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
-                      <span>목차 소개글 (Enter 줄바꿈)</span>
-                      {renderFontScaleControl('tocDesc', 1)}
-                    </div>
-                    <textarea
-                      rows={2}
-                      value={annualReviewNote}
-                      onChange={(e) => {
-                        setAnnualReviewNote(e.target.value);
-                        if (onUpdateBookSettings) {
-                          onUpdateBookSettings({ annualReviewNote: e.target.value });
-                        }
-                      }}
-                      placeholder="각자의 도시에서 매달 사진과 안부를 나누며 함께 걸어온 기록입니다."
-                      className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 1월 ~ 12월 하이라이트 글귀 (1열 · 줄바꿈 가능) */}
-              <div className="bg-[#F2EDE3] p-3 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[#5E3422]">
-                    1월 ~ 12월 하이라이트 글귀 (1열)
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-[#8A442B]">글씨 크기</span>
-                    {renderFontScaleControl('tocHighlights', 1)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-1">
-                  {Array.from({ length: 12 }, (_, idx) => idx + 1).map((m) => (
-                    <div key={m} className="flex items-center gap-2 bg-[#FBF8F3] px-2.5 py-1">
-                      <span className="text-xs font-bold text-[#B64E2E] shrink-0 w-8">
-                        {String(m).padStart(2, '0')}월
-                      </span>
+              <div
+                className={`${
+                  mobileOpenSection === '03'
+                    ? 'block max-h-[34vh] overflow-y-auto pr-1 space-y-2.5'
+                    : 'hidden'
+                } lg:block lg:max-h-none lg:overflow-visible lg:space-y-3`}
+              >
+                {/* 목차 상단 문구 직접 수정 (모두 줄바꿈 지원 textarea + [가-][가+] 크기 조절) */}
+                <div className="bg-[#F2EDE3] p-3 space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
+                        <span>상단 왼쪽 문구</span>
+                        {renderFontScaleControl('tocHeaderLeft', 1)}
+                      </div>
                       <textarea
                         rows={1}
-                        value={
-                          monthlyHighlights[m] !== undefined
-                            ? monthlyHighlights[m]
-                            : DEFAULT_MONTHLY_HIGHLIGHTS[m]
-                        }
-                        onChange={(e) => handleUpdateMonthlyHighlight(m, e.target.value)}
-                        placeholder={`${m}월 하이라이트 글귀`}
-                        className="w-full bg-transparent text-xs text-[#5E3422] focus:outline-none resize-y leading-snug"
+                        value={tocHeaderLeft}
+                        onChange={(e) => {
+                          setTocHeaderLeft(e.target.value);
+                          if (onUpdateBookSettings) {
+                            onUpdateBookSettings({ tocHeaderLeft: e.target.value });
+                          }
+                        }}
+                        placeholder="우리 가족 사진첩 목차"
+                        className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
                       />
                     </div>
-                  ))}
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
+                        <span>상단 오른쪽 문구</span>
+                        {renderFontScaleControl('tocHeaderRight', 1)}
+                      </div>
+                      <textarea
+                        rows={1}
+                        value={tocHeaderRight}
+                        onChange={(e) => {
+                          setTocHeaderRight(e.target.value);
+                          if (onUpdateBookSettings) {
+                            onUpdateBookSettings({ tocHeaderRight: e.target.value });
+                          }
+                        }}
+                        placeholder="2026년 연간 가족사"
+                        className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
+                        <span>목차 소제목</span>
+                        {renderFontScaleControl('tocSubTitle', 1)}
+                      </div>
+                      <textarea
+                        rows={1}
+                        value={tocSubTitle}
+                        onChange={(e) => {
+                          setTocSubTitle(e.target.value);
+                          if (onUpdateBookSettings) {
+                            onUpdateBookSettings({ tocSubTitle: e.target.value });
+                          }
+                        }}
+                        placeholder="연간 가족사 화보집 · 사계절 목차"
+                        className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
+                        <span>목차 큰 제목 (Enter 줄바꿈)</span>
+                        {renderFontScaleControl('tocTitle', 1)}
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={tocTitle}
+                        onChange={(e) => {
+                          setTocTitle(e.target.value);
+                          if (onUpdateBookSettings) {
+                            onUpdateBookSettings({ tocTitle: e.target.value });
+                          }
+                        }}
+                        placeholder="멀리 떨어져 있어도 같은 계절을 건너는 우리들의 기록"
+                        className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs font-medium text-[#5E3422] resize-y leading-snug"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-[#8A442B] mb-0.5">
+                        <span>목차 소개글 (Enter 줄바꿈)</span>
+                        {renderFontScaleControl('tocDesc', 1)}
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={annualReviewNote}
+                        onChange={(e) => {
+                          setAnnualReviewNote(e.target.value);
+                          if (onUpdateBookSettings) {
+                            onUpdateBookSettings({ annualReviewNote: e.target.value });
+                          }
+                        }}
+                        placeholder="각자의 도시에서 매달 사진과 안부를 나누며 함께 걸어온 기록입니다."
+                        className="w-full bg-[#FBF8F3] px-2.5 py-1.5 text-xs text-[#5E3422] resize-y leading-snug"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1월 ~ 12월 하이라이트 글귀 (1열 · 줄바꿈 가능) */}
+                <div className="bg-[#F2EDE3] p-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[#5E3422]">
+                      1월 ~ 12월 하이라이트 글귀 (1열)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[#8A442B]">글씨 크기</span>
+                      {renderFontScaleControl('tocHighlights', 1)}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1">
+                    {Array.from({ length: 12 }, (_, idx) => idx + 1).map((m) => (
+                      <div key={m} className="flex items-center gap-2 bg-[#FBF8F3] px-2.5 py-1">
+                        <span className="text-xs font-bold text-[#B64E2E] shrink-0 w-8">
+                          {String(m).padStart(2, '0')}월
+                        </span>
+                        <textarea
+                          rows={1}
+                          value={
+                            monthlyHighlights[m] !== undefined
+                              ? monthlyHighlights[m]
+                              : DEFAULT_MONTHLY_HIGHLIGHTS[m]
+                          }
+                          onChange={(e) => handleUpdateMonthlyHighlight(m, e.target.value)}
+                          placeholder={`${m}월 하이라이트 글귀`}
+                          className="w-full bg-transparent text-xs text-[#5E3422] focus:outline-none resize-y leading-snug"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
           ) : (
             <>
-              {/* 1. 기간 선택 (한눈에 보이는 컴팩트 바) */}
+              {/* 1. 기간 선택 (모바일에서는 열고 닫기 가능, 웹에서는 항상 펼침) */}
               <section className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-base sm:text-lg font-medium text-[#B64E2E] tracking-tight">
-                    01 / 사진첩 기간 고르기
-                  </h2>
+                <div className="flex items-center justify-between gap-2 bg-[#F2EDE3] lg:bg-transparent px-3 py-2 lg:p-0 rounded-xl lg:rounded-none">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMobileOpenSection((prev) => (prev === '01' ? null : '01'))
+                    }
+                    className="flex items-center gap-2 text-left cursor-pointer lg:cursor-default flex-1"
+                  >
+                    <h2 className="text-sm sm:text-lg font-medium text-[#B64E2E] tracking-tight">
+                      01 / 사진첩 기간 고르기
+                    </h2>
+                    <span className="lg:hidden inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[10px] font-bold shrink-0">
+                      {mobileOpenSection === '01' ? (
+                        <>
+                          <span>닫기</span>
+                          <ChevronUp className="w-3 h-3" />
+                        </>
+                      ) : (
+                        <>
+                          <span>열기</span>
+                          <ChevronDown className="w-3 h-3" />
+                        </>
+                      )}
+                    </span>
+                  </button>
                   <div className="flex items-center gap-2 text-xs text-[#8A442B]">
                     <span>
                       수록 <strong className="text-[#5E3422]">{curatedPhotos.length}장</strong> ·{' '}
@@ -1342,238 +1434,278 @@ export default function PhotobookStudioView({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setShowPhotoSelector((prev) => !prev)}
-                      className="px-3 py-1 rounded-full border border-[#B64E2E]/45 font-medium text-[#8A442B] hover:border-[#B64E2E] cursor-pointer"
+                      onClick={() => {
+                        setShowPhotoSelector((prev) => !prev);
+                        setMobileOpenSection('01');
+                      }}
+                      className="px-2.5 py-1 rounded-full border border-[#B64E2E]/45 font-medium text-[#8A442B] hover:border-[#B64E2E] cursor-pointer"
                     >
                       {showPhotoSelector ? '사진 선택 닫기' : '수록 사진 고르기 +'}
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-1.5">
-                  {PERIOD_PRODUCTS.map((prod) => {
-                    const active = periodType === prod.id;
-                    return (
-                      <button
-                        key={prod.id}
-                        type="button"
-                        onClick={() => {
-                          setPeriodType(prod.id);
-                          setCurrentIndex(0);
-                        }}
-                        className={`p-2.5 text-left transition-all cursor-pointer ${
-                          active
-                            ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                            : 'bg-[#F2EDE3] text-[#5E3422] hover:bg-[#E8E0D0]'
-                        }`}
-                      >
-                        <div
-                          className={`text-[10px] font-medium ${
-                            active ? 'text-[#FBF8F3]/80' : 'text-[#A3573E]'
+                <div
+                  className={`${
+                    mobileOpenSection === '01'
+                      ? 'block max-h-[32vh] overflow-y-auto pr-1 space-y-2'
+                      : 'hidden'
+                  } lg:block lg:max-h-none lg:overflow-visible lg:space-y-2`}
+                >
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {PERIOD_PRODUCTS.map((prod) => {
+                      const active = periodType === prod.id;
+                      return (
+                        <button
+                          key={prod.id}
+                          type="button"
+                          onClick={() => {
+                            setPeriodType(prod.id);
+                            setCurrentIndex(0);
+                          }}
+                          className={`p-2.5 text-left transition-all cursor-pointer ${
+                            active
+                              ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                              : 'bg-[#F2EDE3] text-[#5E3422] hover:bg-[#E8E0D0]'
                           }`}
                         >
-                          {prod.categoryLabel}
-                        </div>
-                        <div className="text-xs sm:text-sm font-medium mt-0.5 truncate">
-                          {prod.title}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                          <div
+                            className={`text-[10px] font-medium ${
+                              active ? 'text-[#FBF8F3]/80' : 'text-[#A3573E]'
+                            }`}
+                          >
+                            {prod.categoryLabel}
+                          </div>
+                          <div className="text-xs sm:text-sm font-medium mt-0.5 truncate">
+                            {prod.title}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                {/* 기간 세부 선택 */}
-                <div className="bg-[#F2EDE3] px-3.5 py-2.5 space-y-2">
-                  {periodType === 'trip' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                      <div>
-                        <label className="block text-[10px] font-medium text-[#8A442B]">
-                          여행 시작일
-                        </label>
-                        <input
-                          type="date"
-                          value={tripStartDate}
-                          onChange={(e) => setTripStartDate(e.target.value)}
-                          className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
-                        />
+                  {/* 기간 세부 선택 */}
+                  <div className="bg-[#F2EDE3] px-3.5 py-2.5 space-y-2">
+                    {periodType === 'trip' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                        <div>
+                          <label className="block text-[10px] font-medium text-[#8A442B]">
+                            여행 시작일
+                          </label>
+                          <input
+                            type="date"
+                            value={tripStartDate}
+                            onChange={(e) => setTripStartDate(e.target.value)}
+                            className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-[#8A442B]">
+                            여행 종료일
+                          </label>
+                          <input
+                            type="date"
+                            value={tripEndDate}
+                            onChange={(e) => setTripEndDate(e.target.value)}
+                            className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-medium text-[#8A442B]">
+                            여행 표지 제목 (줄바꿈 가능)
+                          </label>
+                          <textarea
+                            rows={1}
+                            value={tripDestinationTitle}
+                            onChange={(e) => setTripDestinationTitle(e.target.value)}
+                            placeholder="예: 2026 여름 부산 가족 여행"
+                            className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422] resize-y"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-medium text-[#8A442B]">
-                          여행 종료일
-                        </label>
-                        <input
-                          type="date"
-                          value={tripEndDate}
-                          onChange={(e) => setTripEndDate(e.target.value)}
-                          className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-medium text-[#8A442B]">
-                          여행 표지 제목 (줄바꿈 가능)
-                        </label>
-                        <textarea
-                          rows={1}
-                          value={tripDestinationTitle}
-                          onChange={(e) => setTripDestinationTitle(e.target.value)}
-                          placeholder="예: 2026 여름 부산 가족 여행"
-                          className="w-full bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422] resize-y"
-                        />
-                      </div>
-                    </div>
-                  )}
+                    )}
 
-                  {periodType === 'month' && (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
-                      >
-                        {[2024, 2025, 2026, 2027].map((yr) => (
-                          <option key={yr} value={yr}>
-                            {yr}년
-                          </option>
-                        ))}
-                      </select>
-                      <div className="flex flex-wrap gap-1">
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    {periodType === 'month' && (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <select
+                          value={selectedYear}
+                          onChange={(e) => setSelectedYear(Number(e.target.value))}
+                          className="bg-[#FBF8F3] px-2.5 py-1 text-xs font-medium text-[#5E3422]"
+                        >
+                          {[2024, 2025, 2026, 2027].map((yr) => (
+                            <option key={yr} value={yr}>
+                              {yr}년
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex flex-wrap gap-1">
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSelectedMonth(m)}
+                              className={`px-2 py-1 rounded-full text-xs font-medium cursor-pointer ${
+                                selectedMonth === m
+                                  ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                                  : 'bg-[#FBF8F3] text-[#8A442B]'
+                              }`}
+                            >
+                              {m}월
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {periodType === 'half' && (
+                      <div className="flex items-center justify-between gap-2">
+                        <select
+                          value={selectedYear}
+                          onChange={(e) => setSelectedYear(Number(e.target.value))}
+                          className="bg-[#FBF8F3] px-2.5 py-1.5 text-xs font-medium text-[#5E3422]"
+                        >
+                          {[2024, 2025, 2026, 2027].map((yr) => (
+                            <option key={yr} value={yr}>
+                              {yr}년
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex-1 grid grid-cols-2 gap-1.5">
                           <button
-                            key={m}
                             type="button"
-                            onClick={() => setSelectedMonth(m)}
-                            className={`px-2 py-1 rounded-full text-xs font-medium cursor-pointer ${
-                              selectedMonth === m
+                            onClick={() => setHalfYear('first')}
+                            className={`py-1.5 rounded-full text-xs font-medium cursor-pointer ${
+                              halfYear === 'first'
                                 ? 'bg-[#B64E2E] text-[#FBF8F3]'
                                 : 'bg-[#FBF8F3] text-[#8A442B]'
                             }`}
                           >
-                            {m}월
+                            상반기 (1~6월)
                           </button>
-                        ))}
+                          <button
+                            type="button"
+                            onClick={() => setHalfYear('second')}
+                            className={`py-1.5 rounded-full text-xs font-medium cursor-pointer ${
+                              halfYear === 'second'
+                                ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                                : 'bg-[#FBF8F3] text-[#8A442B]'
+                            }`}
+                          >
+                            하반기 (7~12월)
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {periodType === 'half' && (
-                    <div className="flex items-center justify-between gap-2">
-                      <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="bg-[#FBF8F3] px-2.5 py-1.5 text-xs font-medium text-[#5E3422]"
-                      >
-                        {[2024, 2025, 2026, 2027].map((yr) => (
-                          <option key={yr} value={yr}>
-                            {yr}년
-                          </option>
-                        ))}
-                      </select>
-                      <div className="flex-1 grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setHalfYear('first')}
-                          className={`py-1.5 rounded-full text-xs font-medium cursor-pointer ${
-                            halfYear === 'first'
-                              ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                              : 'bg-[#FBF8F3] text-[#8A442B]'
-                          }`}
+                    {periodType === 'annual' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[#5E3422]">제작 연도</span>
+                        <select
+                          value={selectedYear}
+                          onChange={(e) => setSelectedYear(Number(e.target.value))}
+                          className="bg-[#FBF8F3] px-3 py-1 text-xs font-medium text-[#5E3422]"
                         >
-                          상반기 (1~6월)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setHalfYear('second')}
-                          className={`py-1.5 rounded-full text-xs font-medium cursor-pointer ${
-                            halfYear === 'second'
-                              ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                              : 'bg-[#FBF8F3] text-[#8A442B]'
-                          }`}
-                        >
-                          하반기 (7~12월)
-                        </button>
+                          {[2024, 2025, 2026, 2027].map((yr) => (
+                            <option key={yr} value={yr}>
+                              {yr}년 (1월 ~ 12월)
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {periodType === 'annual' && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-[#5E3422]">제작 연도</span>
-                      <select
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(Number(e.target.value))}
-                        className="bg-[#FBF8F3] px-3 py-1 text-xs font-medium text-[#5E3422]"
-                      >
-                        {[2024, 2025, 2026, 2027].map((yr) => (
-                          <option key={yr} value={yr}>
-                            {yr}년 (1월 ~ 12월)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {showPhotoSelector && (
-                    <div className="pt-2 space-y-2 border-t border-[#5E3422]/10">
-                      <div className="flex items-center justify-between text-xs text-[#8A442B]">
-                        <span>사진을 눌러 수록/제외를 선택하세요</span>
-                        <button
-                          type="button"
-                          onClick={() => setExcludedPhotoIds([])}
-                          className="font-medium text-[#B64E2E] underline cursor-pointer"
-                        >
-                          전체 선택
-                        </button>
+                    {showPhotoSelector && (
+                      <div className="pt-2 space-y-2 border-t border-[#5E3422]/10">
+                        <div className="flex items-center justify-between text-xs text-[#8A442B]">
+                          <span>사진을 눌러 수록/제외를 선택하세요</span>
+                          <button
+                            type="button"
+                            onClick={() => setExcludedPhotoIds([])}
+                            className="font-medium text-[#B64E2E] underline cursor-pointer"
+                          >
+                            전체 선택
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5 max-h-36 overflow-y-auto">
+                          {periodCandidatePhotos.map((p) => {
+                            const isIncluded = !excludedPhotoIds.includes(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => togglePhotoInclusion(p.id)}
+                                className={`relative overflow-hidden text-left transition-all cursor-pointer ${
+                                  isIncluded ? 'opacity-100' : 'opacity-35 grayscale'
+                                }`}
+                              >
+                                <div className="aspect-square bg-[#E6DEC8]">
+                                  <img src={p.url} alt="" className="w-full h-full object-cover" />
+                                  <span
+                                    className={`absolute top-1 right-1 px-1.5 py-0.2 rounded-full text-[9px] font-medium ${
+                                      isIncluded
+                                        ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                                        : 'bg-[#5E3422]/70 text-[#FBF8F3]'
+                                    }`}
+                                  >
+                                    {isIncluded ? '수록' : '제외'}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-6 gap-1.5 max-h-36 overflow-y-auto">
-                        {periodCandidatePhotos.map((p) => {
-                          const isIncluded = !excludedPhotoIds.includes(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => togglePhotoInclusion(p.id)}
-                              className={`relative overflow-hidden text-left transition-all cursor-pointer ${
-                                isIncluded ? 'opacity-100' : 'opacity-35 grayscale'
-                              }`}
-                            >
-                              <div className="aspect-square bg-[#E6DEC8]">
-                                <img src={p.url} alt="" className="w-full h-full object-cover" />
-                                <span
-                                  className={`absolute top-1 right-1 px-1.5 py-0.2 rounded-full text-[9px] font-medium ${
-                                    isIncluded
-                                      ? 'bg-[#B64E2E] text-[#FBF8F3]'
-                                      : 'bg-[#5E3422]/70 text-[#FBF8F3]'
-                                  }`}
-                                >
-                                  {isIncluded ? '수록' : '제외'}
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </section>
 
-              {/* 2. 표지 디자인 · 배경색 · 문구 꾸미기 (한 화면 밀착 구성) */}
+              {/* 2. 표지 디자인 · 배경색 · 문구 꾸미기 (모바일에서는 열고 닫기 가능, 웹에서는 항상 펼침) */}
               <section className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base sm:text-lg font-medium text-[#B64E2E] tracking-tight">
-                    02 / 표지 디자인 · 문구 꾸미기
-                  </h2>
-                  <span className="text-xs text-[#8A442B]">
+                <div className="flex items-center justify-between bg-[#F2EDE3] lg:bg-transparent px-3 py-2 lg:p-0 rounded-xl lg:rounded-none">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMobileOpenSection((prev) => (prev === '02' ? null : '02'))
+                    }
+                    className="flex items-center gap-2 text-left cursor-pointer lg:cursor-default flex-1"
+                  >
+                    <h2 className="text-sm sm:text-lg font-medium text-[#B64E2E] tracking-tight">
+                      02 / 표지 디자인 · 문구 꾸미기
+                    </h2>
+                    <span className="lg:hidden inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-[#B64E2E] text-[#FBF8F3] text-[10px] font-bold shrink-0">
+                      {mobileOpenSection === '02' ? (
+                        <>
+                          <span>닫기</span>
+                          <ChevronUp className="w-3 h-3" />
+                        </>
+                      ) : (
+                        <>
+                          <span>열기</span>
+                          <ChevronDown className="w-3 h-3" />
+                        </>
+                      )}
+                    </span>
+                  </button>
+                  <span className="hidden sm:inline text-xs text-[#8A442B]">
                     모든 문구 입력칸에서 Enter로 줄바꿈 가능
                   </span>
                 </div>
 
-                <form onSubmit={handleSaveCoverText} className="space-y-3">
-                  {/* 표지 디자인 8종 선택 (4x2 그리드) */}
-                  <div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <form
+                  onSubmit={handleSaveCoverText}
+                  className={`${
+                    mobileOpenSection === '02'
+                      ? 'block max-h-[34vh] overflow-y-auto pr-1 space-y-3'
+                      : 'hidden'
+                  } lg:block lg:max-h-none lg:overflow-visible lg:space-y-3`}
+                >
+                  {/* 표지 디자인 9종 선택 (3x3 그리드, 직접 올리기 포함) */}
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {COVER_LAYOUT_OPTIONS.map((opt) => {
                         const active = coverLayout === opt.id;
+                        const isCustomUpload = opt.id === 'custom-upload';
                         return (
                           <button
                             key={opt.id}
@@ -1586,10 +1718,18 @@ export default function PhotobookStudioView({
                                 setCoverShowPhoto(true);
                               }
                               setCurrentIndex(0);
+                              if (isCustomUpload) {
+                                setIsRepositionMode(true);
+                                if (!customCoverPhotoUrl) {
+                                  coverPhotoInputRef.current?.click();
+                                }
+                              }
                             }}
                             className={`p-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                               active
                                 ? 'bg-[#B64E2E] text-[#FBF8F3]'
+                                : isCustomUpload
+                                ? 'bg-[#E8E0D0] text-[#5E3422] hover:bg-[#DDD2BD] ring-1 ring-[#B64E2E]/40'
                                 : 'bg-[#F2EDE3] text-[#5E3422] hover:bg-[#E8E0D0]'
                             }`}
                           >
@@ -1606,6 +1746,76 @@ export default function PhotobookStudioView({
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* 직접 올리기 & 표지 사진 드래그 크기 조절 빠른 바 */}
+                    <div className="bg-[#F2EDE3] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => coverPhotoInputRef.current?.click()}
+                          className="px-3 py-1 rounded-full bg-[#B64E2E] hover:bg-[#A3573E] text-[#FBF8F3] text-xs font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <ImagePlus className="w-3.5 h-3.5" />
+                          <span>내 기기에서 표지 사진 직접 올리기 +</span>
+                        </button>
+                        {coverLayout === 'custom-upload' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !customCoverShowText;
+                              setCustomCoverShowText(next);
+                              if (onUpdateBookSettings) {
+                                onUpdateBookSettings({ customCoverShowText: next });
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold cursor-pointer ${
+                              customCoverShowText
+                                ? 'bg-[#5E3422] text-[#FBF8F3]'
+                                : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
+                            }`}
+                          >
+                            {customCoverShowText ? '표지 문구 표시 ON' : '표지 문구 숨김 (순수 이미지)'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <span className="text-[11px] font-medium text-[#5E3422]">
+                          표지 사진 크기(드래그):
+                        </span>
+                        <input
+                          type="range"
+                          min="0.4"
+                          max="3.0"
+                          step="0.02"
+                          value={coverCropZoom}
+                          onChange={(e) => {
+                            setCurrentIndex(0);
+                            setIsRepositionMode(true);
+                            handleToolbarAdjustPosition(0, 0, 0, false, Number(e.target.value));
+                          }}
+                          title="드래그하여 표지 사진 크기 조절 (40% ~ 300%)"
+                          className="w-20 sm:w-28 accent-[#B64E2E] cursor-ew-resize"
+                        />
+                        <span className="text-xs font-mono-meta font-bold text-[#B64E2E] min-w-[36px] text-right">
+                          {Math.round(coverCropZoom * 100)}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentIndex(0);
+                            setIsRepositionMode((prev) => !prev);
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold cursor-pointer ${
+                            isRepositionMode
+                              ? 'bg-[#806E43] text-[#FBF8F3]'
+                              : 'bg-[#FBF8F3] text-[#8A442B] border border-[#B64E2E]/40'
+                          }`}
+                        >
+                          {isRepositionMode ? '드래그 조절 켜짐' : '모서리 드래그 조절'}
+                        </button>
+                      </div>
                     </div>
                   </div>
 

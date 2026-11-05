@@ -333,7 +333,39 @@ export async function onRequest(context) {
 
     // POST /api/members
     if (method === 'POST' && route === 'members') {
-      const { id, name, role, city, color, badgeBg, avatar, avatarImage, isChildProfile, orderedIds } = await request.json();
+      const {
+        id,
+        name,
+        role,
+        city,
+        color,
+        badgeBg,
+        avatar,
+        avatarImage,
+        isChildProfile,
+        orderedIds,
+        replaceMembers,
+      } = await request.json();
+
+      if (Array.isArray(replaceMembers) && replaceMembers.length > 0) {
+        db.members = replaceMembers.map((m, idx) => {
+          const cleanName = (m.name || '가족').trim();
+          const cleanCity = (m.city || '부산').trim();
+          return {
+            ...m,
+            id: m.id || `member-${Date.now()}-${idx}`,
+            name: cleanName,
+            city: cleanCity,
+            role: (m.role || cleanCity).trim(),
+            avatar: m.avatar ? m.avatar.trim().slice(0, 2) : cleanName.slice(0, 2),
+          };
+        });
+        await saveDb(env, db);
+        return new Response(JSON.stringify({ members: db.members }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
 
       if (Array.isArray(orderedIds) && orderedIds.length > 0) {
         const map = new Map(db.members.map((m) => [m.id, m]));
